@@ -1,0 +1,9 @@
+serverAddr = "136.117.23.173"
+serverPort = 7000
+
+[[proxies]]
+name = "mpesa-callback"
+type = "tcp"
+localIP = "127.0.0.1"
+localPort = 3000
+remotePort = 3001

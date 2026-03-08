@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Connecting to TurboNet...</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+        }
+
+        .loader {
+            text-align: center;
+        }
+
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 4px solid rgba(255, 255, 255, 0.1);
+            border-top-color: #22c55e;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        h1 {
+            font-size: 1.5rem;
+            margin-bottom: 10px;
+        }
+
+        p {
+            color: #94a3b8;
+            font-size: 0.9rem;
+        }
+
+        #status-msg {
+            margin-top: 12px;
+            color: #22c55e;
+            font-size: 0.85rem;
+        }
+    </style>
+    <script>
+        // Get MAC address from MikroTik variables
+        // $(mac) and $(mac-esc) are replaced by MikroTik
+        var mac = "$(mac-esc)";
+        var link = "$(link-orig-esc)";
+
+        // Portal and API URLs
+        var portalURL = "http://136.117.23.173";
+        var apiURL = "http://136.117.23.173:3000/api";
+
+        var loginUrl = "$(link-login-only)";
+
+        window.onload = function () {
+            // First, check if this device already has an active subscription
+            checkActiveSubscription();
+        };
+
+        function checkActiveSubscription() {
+            var statusMsg = document.getElementById('status-msg');
+            statusMsg.textContent = "Checking subscription...";
+
+            var xhr = new XMLHttpRequest();
+            xhr.open("GET", apiURL + "/check-status?mac=" + encodeURIComponent(mac), true);
+            xhr.timeout = 5000; // 5 second timeout
+
+            xhr.onload = function () {
+                try {
+                    var data = JSON.parse(xhr.responseText);
+                    if (data.active && (data.loginIdentity || data.phoneNumber)) {
+                        // Device has active subscription — auto-login via MikroTik hotspot
+                        statusMsg.textContent = "Active package found! Connecting...";
+                        autoLogin(data.loginIdentity || data.phoneNumber);
+                        return;
+                    }
+                    if (data.blocked) {
+                        statusMsg.textContent = "Device blocked by admin. Redirecting...";
+                    }
+                } catch (e) {
+                    console.error("Status check parse error:", e);
+                }
+                // No active subscription — redirect to payment portal
+                redirectToPortal();
+            };
+
+            xhr.onerror = function () {
+                // API unreachable — redirect to portal anyway
+                redirectToPortal();
+            };
+
+            xhr.ontimeout = function () {
+                // Timeout — redirect to portal
+                redirectToPortal();
+            };
+
+            xhr.send();
+        }
+
+        function autoLogin(phoneNumber) {
+            // Submit the MikroTik hotspot login form with the phone number
+            // Phone number is used as both username and password (matching RADIUS setup)
+            var form = document.getElementById('login-form');
+            document.getElementById('login-username').value = phoneNumber;
+            document.getElementById('login-password').value = phoneNumber;
+            form.submit();
+        }
+
+        function redirectToPortal() {
+            var redirectURL = portalURL + "?mac=" + encodeURIComponent(mac);
+
+            if (link && link !== "") {
+                redirectURL += "&redirect=" + encodeURIComponent(link);
+            }
+
+            if (loginUrl && loginUrl !== "") {
+                redirectURL += "&login_url=" + encodeURIComponent(loginUrl);
+            }
+
+            setTimeout(function () {
+                window.location.href = redirectURL;
+            }, 300);
+        }
+    </script>
+</head>
+
+<body>
+    <div class="loader">
+        <div class="spinner"></div>
+        <h1>Connecting to TurboNet</h1>
+        <p>Please wait while we connect you...</p>
+        <p id="status-msg"></p>
+    </div>
+
+    <!-- Hidden MikroTik login form for auto-login -->
+    <form id="login-form" name="login" action="$(link-login-only)" method="post" style="display:none;">
+        <input type="hidden" name="username" id="login-username" value="" />
+        <input type="hidden" name="password" id="login-password" value="" />
+    </form>
+</body>
+
+</html>

@@ -1,0 +1,50 @@
+# Node details
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Build outputs
+dist/
+dist-ssr/
+build/
+*.tar
+*.tar.gz
+*.zip
+
+# Environment & Secrets
+.env
+.env.production
+.env.local
+.env.*.local
+config
+gcp_key.pub
+
+# Database
+portal/app/backend/backend.log
+portal/app/backend/frpc.log
+portal/app/backend/test-output.txt
+
+# Logs
+*.log
+logs/
+
+# Editor/System
+.vscode/
+!.vscode/extensions.json
+.idea/
+.DS_Store
+desktop.ini
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Project specific
+n8n_raw_backup.tar.gz
+log.txt
+Vps.md
+test-multi-vendor.js
+portal/app/backend/test-modules.js
