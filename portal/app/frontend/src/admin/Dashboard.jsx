@@ -14,6 +14,32 @@ export default function Dashboard() {
     const [error, setError] = useState('');
     const authHeaders = () => ({ 'Authorization': `Bearer ${localStorage.getItem('accessToken')}`, 'Content-Type': 'application/json' });
 
+    // Add this function to fetch the data
+    const fetchStats = async () => {
+        try {
+            setLoading(true);
+            setError('');
+            const res = await fetch(`${API_URL}/stats`, { headers: authHeaders() });
+            
+            if (!res.ok) {
+                if (res.status === 401) throw new Error('Unauthorized Access');
+                throw new Error('Failed to fetch stats from server');
+            }
+            
+            const data = await res.json();
+            setStats(data);
+        } catch (err) {
+            setError(err.message || 'System Error: Could not retrieve data');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    // Add this hook to trigger the fetch when the component loads
+    useEffect(() => {
+        fetchStats();
+    }, []);
+
     if (loading) {
         return (
             <div className="h-64 flex flex-col items-center justify-center font-mono text-zinc-500">
