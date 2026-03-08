@@ -1,83 +1,89 @@
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
-  font-family: 'Outfit', sans-serif;
+  --bg-main: #0A0A0B;
+  --bg-surface: #141415;
+  --border-subtle: #1F1F21;
+  --border-active: #2D2D30;
+  --text-primary: #F4F4F5;
+  --text-secondary: #A1A1AA;
+  --text-muted: #52525B;
+  --accent: #3B82F6;
+  
+  font-family: 'Inter', sans-serif;
   -webkit-tap-highlight-color: transparent;
+  background-color: var(--bg-main);
+  color: var(--text-primary);
 }
 
-/* Base enhancements */
 body {
   margin: 0;
   -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
   overscroll-behavior: none;
+  background-color: var(--bg-main);
 }
 
-/* Hide scrollbar for cleaner UI */
+/* Industrial Component Styles */
+.panel-container {
+  @apply bg-[#111112] border border-[#1F1F21] rounded-lg shadow-sm;
+}
+
+.industrial-button {
+  @apply px-4 py-3 rounded-md font-bold text-sm tracking-tight uppercase transition-all duration-200 active:scale-[0.98];
+}
+
+.ticket-card {
+  @apply relative p-6 bg-[#161617] border border-[#1F1F21] hover:border-[#2D2D30] transition-colors rounded-xl overflow-hidden cursor-pointer;
+}
+
+.status-badge {
+  @apply inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold tracking-widest uppercase border;
+}
+
+/* Scrollbar Refinement */
 ::-webkit-scrollbar {
-  width: 0px;
+  width: 4px;
+}
+::-webkit-scrollbar-track {
   background: transparent;
 }
+::-webkit-scrollbar-thumb {
+  background: #27272A;
+  border-radius: 2px;
+}
 
-/* Touch-friendly form elements */
-input, select, button {
-  min-height: 44px;
-  font-size: 16px; /* Prevents zoom on iOS */
+/* Standardized Typography */
+h1, h2, h3 {
+  @apply tracking-tight font-extrabold;
+}
+
+.mono-label {
+  font-family: 'JetBrains Mono', monospace;
+  @apply text-[10px] uppercase tracking-tighter;
+}
+
+/* Mobile Fixes */
+input, button {
+  min-height: 48px;
+  @apply rounded-lg;
 }
 
 @media (min-width: 768px) {
-  input, select, button {
+  input, button {
     min-height: auto;
-    font-size: inherit;
   }
 }
 
-/* Mobile-first utilities */
-@layer utilities {
-  .touch-target {
-    @apply min-h-[44px] min-w-[44px];
-  }
-  
-  .safe-bottom {
-    padding-bottom: env(safe-area-inset-bottom);
-  }
-  
-  .safe-top {
-    padding-top: env(safe-area-inset-top);
-  }
+.safe-area-spacing {
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
 }
 
-/* Smooth animations for mobile */
-@media (prefers-reduced-motion: no-preference) {
-  * {
-    scroll-behavior: smooth;
-  }
-}
-
-/* Prevent text selection on interactive elements */
-button, a {
-  -webkit-user-select: none;
-  user-select: none;
-}
-
-/* Fix for iOS input styling */
-input[type="text"],
-input[type="tel"],
-input[type="password"],
-input[type="number"] {
-  -webkit-appearance: none;
-  appearance: none;
-  border-radius: 0.75rem;
-}
-
-/* Ensure modals work well on mobile */
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-}
+/* Utilities */
+.custom-scrollbar::-webkit-scrollbar { width: 4px; }
+.custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+.custom-scrollbar::-webkit-scrollbar-thumb { background: #1E293B; border-radius: 4px; }
