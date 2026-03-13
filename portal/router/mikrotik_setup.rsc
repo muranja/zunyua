@@ -1,6 +1,6 @@
 {
 # =====================================================
-# TurboNet MikroTik Hotspot Configuration (Optimized v7)
+# TurboNet MikroTik Hotspot Configuration (Production v8)
 # =====================================================
 # IMPORTANT: Before running this script, enable hotspot in device-mode:
 #   /system/device-mode/update hotspot=yes
@@ -11,50 +11,143 @@
 :local portalURL "http://136.117.23.173"
 :local radiusIP "136.117.23.173"
 :local radiusSecret "TurboNetSecret2024"
+:local lanBridge "bridge"
+:local lanIP "192.168.88.1/24"
+:local lanNet "192.168.88.0/24"
+:local dhcpPool "hs-pool"
+:local dhcpServer "dhcp-hotspot"
 
-# ============ 0. NETWORK SETUP ============
+# ============ 0. NETWORK & DNS SETUP ============
 # Create the bridge if it doesn't exist
-/interface bridge add name=bridge disabled=no auto-mac=yes
+:if ([:len [/interface bridge find name=$lanBridge]] = 0) do={
+    /interface bridge add name=$lanBridge disabled=no auto-mac=yes
+}
 
-# Add LAN ports and Wi-Fi to the bridge
-/interface bridge port add bridge=bridge interface=ether2 disabled=no
-/interface bridge port add bridge=bridge interface=ether3 disabled=no
-/interface bridge port add bridge=bridge interface=ether4 disabled=no
-/interface bridge port add bridge=bridge interface=ether5 disabled=no
-/interface bridge port add bridge=bridge interface=wlan1 disabled=no
+# Add LAN ports and Wi-Fi to the bridge (idempotent)
+:foreach p in={"ether2";"ether3";"ether4";"ether5";"wlan1"} do={
+    :if ([:len [/interface bridge port find interface=$p bridge=$lanBridge]] = 0) do={
+        /interface bridge port add bridge=$lanBridge interface=$p disabled=no
+    }
+}
 
 # Set the IP address on the bridge
-/ip address add address=192.168.88.1/24 interface=bridge disabled=no
+:if ([:len [/ip address find address=$lanIP interface=$lanBridge]] = 0) do={
+    /ip address add address=$lanIP interface=$lanBridge disabled=no
+}
 
-# 1. RADIUS SERVER
-/radius add address=$radiusIP secret=$radiusSecret service=hotspot timeout=3000ms
+# Enable MikroTik to process DNS requests (required for captive portal)
+/ip dns set allow-remote-requests=yes servers=8.8.8.8,1.1.1.1
+
+# DHCP (only if not already configured on the bridge)
+:if ([:len [/ip pool find name=$dhcpPool]] = 0) do={
+    /ip pool add name=$dhcpPool ranges=192.168.88.10-192.168.88.254
+}
+:if ([:len [/ip dhcp-server find interface=$lanBridge]] = 0) do={
+    /ip dhcp-server add name=$dhcpServer interface=$lanBridge address-pool=$dhcpPool disabled=no
+}
+:if ([:len [/ip dhcp-server network find address=$lanNet]] = 0) do={
+    /ip dhcp-server network add address=$lanNet gateway=192.168.88.1 dns-server=192.168.88.1
+}
+
+# ============ 1. RADIUS SERVER ============
+:if ([:len [/radius find address=$radiusIP service=hotspot]] = 0) do={
+    /radius add address=$radiusIP secret=$radiusSecret service=hotspot timeout=3000ms
+}
 /radius incoming set accept=yes port=3799
 
-# 2. HOTSPOT PROFILE
-/ip hotspot profile add name="turbonet" hotspot-address=192.168.88.1 dns-name="wifi.local" html-directory=hotspot login-by=http-pap,http-chap use-radius=yes radius-interim-update=5m http-cookie-lifetime=3d split-user-domain=no
+# ============ 2. HOTSPOT PROFILE ============
+# Updated DNS name to avoid .local mDNS conflicts on Mac/Linux
+:if ([:len [/ip hotspot profile find name="turbonet"]] = 0) do={
+    /ip hotspot profile add name="turbonet" hotspot-address=192.168.88.1 dns-name="login.turbowifi.net" html-directory=hotspot login-by=http-pap,http-chap use-radius=yes radius-interim-update=5m http-cookie-lifetime=3d split-user-domain=no
+} else={
+    /ip hotspot profile set [find name="turbonet"] hotspot-address=192.168.88.1 dns-name="login.turbowifi.net" html-directory=hotspot login-by=http-pap,http-chap use-radius=yes radius-interim-update=5m http-cookie-lifetime=3d split-user-domain=no
+}
 
-# 3. HOTSPOT SERVER
-/ip hotspot add name="turbonet-hs" interface="bridge" profile=turbonet disabled=no
+# ============ 3. HOTSPOT SERVER ============
+:if ([:len [/ip hotspot find name="turbonet-hs"]] = 0) do={
+    /ip hotspot add name="turbonet-hs" interface=$lanBridge profile=turbonet disabled=no
+} else={
+    /ip hotspot set [find name="turbonet-hs"] interface=$lanBridge profile=turbonet disabled=no
+}
 
-# 4. USER PROFILE (DEFAULT)
+# ============ 4. USER PROFILE (DEFAULT) ============
 /ip hotspot user profile set [find default=yes] shared-users=1 idle-timeout=10m keepalive-timeout=2m
 
-# 5. WALLED GARDEN
-/ip hotspot walled-garden ip add action=accept dst-address=$radiusIP comment="Portal App"
-/ip hotspot walled-garden ip add action=accept dst-host="*.safaricom.co.ke" comment="Safaricom"
-/ip hotspot walled-garden ip add action=accept dst-host="*.mpesa.safaricom.co.ke" comment="M-Pesa"
-/ip hotspot walled-garden ip add action=accept dst-address=8.8.8.8 comment="Google DNS"
+# ============ 5. WALLED GARDEN ============
+:if ([:len [/ip hotspot walled-garden ip find dst-address=$radiusIP]] = 0) do={
+    /ip hotspot walled-garden ip add action=accept dst-address=$radiusIP comment="Portal/RADIUS App"
+}
+:if ([:len [/ip hotspot walled-garden ip find dst-host="login.turbowifi.net"]] = 0) do={
+    /ip hotspot walled-garden ip add action=accept dst-host="login.turbowifi.net" comment="Portal Hostname"
+}
+:if ([:len [/ip hotspot walled-garden ip find dst-host="*.safaricom.co.ke"]] = 0) do={
+    /ip hotspot walled-garden ip add action=accept dst-host="*.safaricom.co.ke" comment="Safaricom"
+}
+:if ([:len [/ip hotspot walled-garden ip find dst-host="*.mpesa.safaricom.co.ke"]] = 0) do={
+    /ip hotspot walled-garden ip add action=accept dst-host="*.mpesa.safaricom.co.ke" comment="M-Pesa"
+}
 
-# 6. NAT / FIREWALL
-/ip firewall nat add chain=srcnat out-interface=ether1 action=masquerade comment="Internet"
+# ============ 6. FIREWALL & NAT (Production Enforcement) ============
+# Block DoH (DNS over HTTPS) for unauthenticated users only
+:if ([:len [/ip firewall filter find comment="Block DoH Cloudflare (unauth)"]] = 0) do={
+    /ip firewall filter add action=reject chain=hs-unauth comment="Block DoH Cloudflare (unauth)" dst-address=1.1.1.1 dst-port=443 protocol=tcp reject-with=tcp-reset
+}
+:if ([:len [/ip firewall filter find comment="Block DoH Google (unauth)"]] = 0) do={
+    /ip firewall filter add action=reject chain=hs-unauth comment="Block DoH Google (unauth)" dst-address=8.8.8.8 dst-port=443 protocol=tcp reject-with=tcp-reset
+}
+:if ([:len [/ip firewall filter find comment="Block DoH Google Alternate (unauth)"]] = 0) do={
+    /ip firewall filter add action=reject chain=hs-unauth comment="Block DoH Google Alternate (unauth)" dst-address=8.8.4.4 dst-port=443 protocol=tcp reject-with=tcp-reset
+}
 
-# 7. TIME SYNC
+# Block DoH Quad9
+:if ([:len [/ip firewall filter find comment="Block DoH Quad9 (unauth)"]] = 0) do={
+    /ip firewall filter add action=reject chain=hs-unauth comment="Block DoH Quad9 (unauth)" dst-address=9.9.9.9 dst-port=443 protocol=tcp reject-with=tcp-reset
+}
+:if ([:len [/ip firewall filter find comment="Block DoH Quad9 Alt (unauth)"]] = 0) do={
+    /ip firewall filter add action=reject chain=hs-unauth comment="Block DoH Quad9 Alt (unauth)" dst-address=149.112.112.112 dst-port=443 protocol=tcp reject-with=tcp-reset
+}
+
+# Block DoH OpenDNS
+:if ([:len [/ip firewall filter find comment="Block DoH OpenDNS (unauth)"]] = 0) do={
+    /ip firewall filter add action=reject chain=hs-unauth comment="Block DoH OpenDNS (unauth)" dst-address=208.67.222.222 dst-port=443 protocol=tcp reject-with=tcp-reset
+}
+:if ([:len [/ip firewall filter find comment="Block DoH OpenDNS Alt (unauth)"]] = 0) do={
+    /ip firewall filter add action=reject chain=hs-unauth comment="Block DoH OpenDNS Alt (unauth)" dst-address=208.67.220.220 dst-port=443 protocol=tcp reject-with=tcp-reset
+}
+
+# Block DoH NextDNS
+:if ([:len [/ip firewall filter find comment="Block DoH NextDNS (unauth)"]] = 0) do={
+    /ip firewall filter add action=reject chain=hs-unauth comment="Block DoH NextDNS (unauth)" dst-address=45.90.28.0 dst-port=443 protocol=tcp reject-with=tcp-reset
+}
+:if ([:len [/ip firewall filter find comment="Block DoH NextDNS Alt (unauth)"]] = 0) do={
+    /ip firewall filter add action=reject chain=hs-unauth comment="Block DoH NextDNS Alt (unauth)" dst-address=45.90.30.0 dst-port=443 protocol=tcp reject-with=tcp-reset
+}
+
+# Force standard DNS traffic to the router for unauthenticated users only
+:if ([:len [/ip firewall nat find comment="Force_DNS_UDP (unauth)"]] = 0) do={
+    /ip firewall nat add action=redirect chain=hs-unauth-to comment="Force_DNS_UDP (unauth)" dst-port=53 protocol=udp to-ports=53
+}
+:if ([:len [/ip firewall nat find comment="Force_DNS_TCP (unauth)"]] = 0) do={
+    /ip firewall nat add action=redirect chain=hs-unauth-to comment="Force_DNS_TCP (unauth)" dst-port=53 protocol=tcp to-ports=53
+}
+
+# General Masquerade for Internet access
+:if ([:len [/ip firewall nat find comment="Internet"]] = 0) do={
+    /ip firewall nat add chain=srcnat out-interface=ether1 action=masquerade comment="Internet"
+}
+
+# ============ 7. TIME SYNC ============
 /system ntp client set enabled=yes
-/system ntp client servers add address=time.cloudflare.com
-/system ntp client servers add address=pool.ntp.org
+:if ([:len [/system ntp client servers find address="time.cloudflare.com"]] = 0) do={
+    /system ntp client servers add address=time.cloudflare.com
+}
+:if ([:len [/system ntp client servers find address="pool.ntp.org"]] = 0) do={
+    /system ntp client servers add address=pool.ntp.org
+}
 
-# 8. ENABLE WIFI (AP Mode)
+# ============ 8. ENABLE WIFI (AP Mode) ============
 /interface wireless set wlan1 mode=ap-bridge ssid="TurboNet_Free_WiFi" disabled=no
+/interface wireless enable wlan1
 
-/log info "TurboNet Setup Successful!"
+/log info "TurboNet Production Setup Complete!"
 }

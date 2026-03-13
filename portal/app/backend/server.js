@@ -401,13 +401,11 @@ app.get('/api/payment-status/:checkoutRequestId', async (req, res) => {
                 'SELECT expires_at, phone_number, mac_address FROM access_tokens WHERE id = ?',
                 [tx.access_token_id]
             );
-            
             return res.json({
                 status: 'COMPLETED',
                 expiresAt: accessRows.length > 0 ? accessRows[0].expires_at : null,
-                phoneNumber: accessRows.length > 0 ? accessRows[0].phone_number : tx.phone_number,
                 macAddress: accessRows.length > 0 ? accessRows[0].mac_address : tx.mac_address,
-                loginIdentity: accessRows.length > 0 ? accessRows[0].mac_address : tx.mac_address
+                loginIdentity: accessRows.length > 0 ? accessRows[0].phone_number : tx.phone_number
             });
         }
 
@@ -625,14 +623,12 @@ app.get('/api/check-status', async (req, res) => {
             'SELECT at.*, p.name as plan_name FROM access_tokens at JOIN plans p ON at.plan_id = p.id WHERE at.vendor_id = ? AND at.mac_address = ? AND at.status = "ACTIVE" AND at.expires_at > NOW() ORDER BY at.expires_at DESC LIMIT 1',
             [vendorId, mac]
         );
-
         if (rows.length > 0) {
             return res.json({
                 active: true,
                 expiresAt: rows[0].expires_at,
-                phoneNumber: rows[0].phone_number,
                 planName: rows[0].plan_name,
-                loginIdentity: rows[0].mac_address
+                loginIdentity: rows[0].phone_number
             });
         }
 
