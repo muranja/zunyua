@@ -16,6 +16,7 @@ const { generateAccessToken, formatPhoneNumber, normalizeMac } = require('./util
 const { ensurePolicyTables, getMacPolicy } = require('./utils/macPolicy');
 const { ensureSystemSettingsTable, getSetting, parseBool } = require('./utils/systemSettings');
 const { ensureVendorSchema, getDefaultVendorId } = require('./utils/vendorScope');
+const { disconnectRadiusSession } = require('./utils/radiusCoa');
 
 dotenv.config();
 
@@ -448,13 +449,14 @@ app.post('/api/callback', async (req, res) => {
     const metadata = Array.isArray(callbackData.CallbackMetadata?.Item) ? callbackData.CallbackMetadata.Item : [];
     const getMeta = (name) => metadata.find((o) => o.Name === name)?.Value;
     const mpesaReceiptNumber = String(getMeta('MpesaReceiptNumber') || '').trim().toUpperCase();
-    const phoneNumber = String(getMeta('PhoneNumber') || '').trim();
+    const rawPhoneNumber = String(getMeta('PhoneNumber') || '').trim();
+    const formattedCallbackPhone = rawPhoneNumber ? formatPhoneNumber(rawPhoneNumber) : '';
 
-    if (!mpesaReceiptNumber || !phoneNumber) {
+    if (!mpesaReceiptNumber || !formattedCallbackPhone) {
         console.error('Callback missing required metadata:', checkoutReqId);
         return res.json({ result: 'ok' });
     }
-    console.log(`Callback metadata: checkout=${checkoutReqId} receipt=${mpesaReceiptNumber} phone=${phoneNumber}`);
+    console.log(`Callback metadata: checkout=${checkoutReqId} receipt=${mpesaReceiptNumber} phone=${formattedCallbackPhone}`);
 
     const conn = await db.getConnection();
     try {
@@ -471,6 +473,15 @@ app.post('/api/callback', async (req, res) => {
         }
 
         const tx = txRows[0];
+        const txPhoneRaw = String(tx.phone_number || '').trim();
+        const normalizedTxPhone = txPhoneRaw ? formatPhoneNumber(txPhoneRaw) : '';
+        let effectivePhone = formattedCallbackPhone;
+        if (normalizedTxPhone) {
+            if (formattedCallbackPhone && normalizedTxPhone !== formattedCallbackPhone) {
+                console.warn(`Callback phone mismatch: tx=${normalizedTxPhone} callback=${formattedCallbackPhone} checkout=${checkoutReqId}`);
+            }
+            effectivePhone = normalizedTxPhone;
+        }
         console.log(`Callback tx locked: id=${tx.id} status=${tx.status} mac=${tx.mac_address} plan=${tx.plan_id} vendor=${tx.vendor_id || 'default'}`);
         if (tx.status === 'COMPLETED' && tx.access_token_id) {
             await conn.commit();
@@ -482,13 +493,16 @@ app.post('/api/callback', async (req, res) => {
             [mpesaReceiptNumber, tx.id]
         );
         if (duplicateReceipt.length > 0) {
-            await conn.rollback();
+            await conn.execute('UPDATE transactions SET status = ? WHERE id = ? AND status = "PENDING"', ['FAILED', tx.id]);
+            await conn.commit();
             return res.json({ result: 'ok' });
         }
 
         const [planRows] = await conn.query('SELECT * FROM plans WHERE id = ?', [tx.plan_id]);
-        const plan = planRows[0];
+        const plan = planRows[0] || null;
         const durationSeconds = plan ? plan.duration_minutes * 60 : 3600;
+        const speedLimitDown = plan ? plan.speed_limit_down : null;
+        const speedLimitUp = plan ? plan.speed_limit_up : null;
         const expiresAt = new Date(Date.now() + durationSeconds * 1000);
         console.log(`Callback plan resolved: plan=${tx.plan_id} duration=${durationSeconds}s expires=${expiresAt.toISOString()}`);
 
@@ -501,7 +515,7 @@ app.post('/api/callback', async (req, res) => {
         console.log(`Callback access token generated: token=${accessToken} mac=${tx.mac_address}`);
         const [result] = await conn.execute(
             'INSERT INTO access_tokens (token, phone_number, mac_address, plan_id, expires_at, status, vendor_id, speed_limit_down, speed_limit_up) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-            [accessToken, phoneNumber, tx.mac_address, tx.plan_id, expiresAt, 'ACTIVE', tx.vendor_id || (await getDefaultVendorId()), plan.speed_limit_down, plan.speed_limit_up]
+            [accessToken, effectivePhone, tx.mac_address, tx.plan_id, expiresAt, 'ACTIVE', tx.vendor_id || (await getDefaultVendorId()), speedLimitDown, speedLimitUp]
         );
         console.log(`Callback access token inserted: access_token_id=${result.insertId}`);
 
@@ -511,13 +525,13 @@ app.post('/api/callback', async (req, res) => {
         );
         console.log(`Callback transaction completed: tx_id=${tx.id} receipt=${mpesaReceiptNumber}`);
 
-        const [userCheck] = await conn.query('SELECT id FROM radcheck WHERE username = ?', [phoneNumber]);
+        const [userCheck] = await conn.query('SELECT id FROM radcheck WHERE username = ?', [effectivePhone]);
         if (userCheck.length === 0) {
             await conn.execute(
                 "INSERT INTO radcheck (username, attribute, op, value) VALUES (?, 'Cleartext-Password', ':=', ?)",
-                [phoneNumber, phoneNumber]
+                [effectivePhone, effectivePhone]
             );
-            console.log(`RADIUS user created: username=${phoneNumber}`);
+            console.log(`RADIUS user created: username=${effectivePhone}`);
         }
 
         const [macCheck] = await conn.query('SELECT id FROM radcheck WHERE username = ?', [tx.mac_address]);
@@ -529,10 +543,10 @@ app.post('/api/callback', async (req, res) => {
             console.log(`RADIUS MAC user created: username=${tx.mac_address}`);
         }
 
-        await conn.execute('DELETE FROM radreply WHERE username = ?', [phoneNumber]);
+        await conn.execute('DELETE FROM radreply WHERE username = ?', [effectivePhone]);
         await conn.execute(
             "INSERT INTO radreply (username, attribute, op, value) VALUES (?, 'Session-Timeout', '=', ?)",
-            [phoneNumber, String(durationSeconds)]
+            [effectivePhone, String(durationSeconds)]
         );
 
         await conn.execute('DELETE FROM radreply WHERE username = ?', [tx.mac_address]);
@@ -540,24 +554,28 @@ app.post('/api/callback', async (req, res) => {
             "INSERT INTO radreply (username, attribute, op, value) VALUES (?, 'Session-Timeout', '=', ?)",
             [tx.mac_address, String(durationSeconds)]
         );
-        console.log(`RADIUS session timeout set: username=${phoneNumber} mac=${tx.mac_address} seconds=${durationSeconds}`);
+        console.log(`RADIUS session timeout set: username=${effectivePhone} mac=${tx.mac_address} seconds=${durationSeconds}`);
 
         if (plan && plan.speed_limit_down) {
             const uploadLimit = plan.speed_limit_up || '2M';
             const limitValue = `${uploadLimit}/${plan.speed_limit_down}`;
             await conn.execute(
                 "INSERT INTO radreply (username, attribute, op, value) VALUES (?, 'Mikrotik-Rate-Limit', '=', ?)",
-                [phoneNumber, limitValue]
+                [effectivePhone, limitValue]
             );
             await conn.execute(
                 "INSERT INTO radreply (username, attribute, op, value) VALUES (?, 'Mikrotik-Rate-Limit', '=', ?)",
                 [tx.mac_address, limitValue]
             );
-            console.log(`RADIUS rate limit set: username=${phoneNumber} mac=${tx.mac_address} limit=${limitValue}`);
+            console.log(`RADIUS rate limit set: username=${effectivePhone} mac=${tx.mac_address} limit=${limitValue}`);
         }
 
         await conn.commit();
-        console.log(`Access granted for ${phoneNumber}, expires ${expiresAt.toISOString()}`);
+        console.log(`Access granted for ${effectivePhone}, expires ${expiresAt.toISOString()}`);
+        const coa = await disconnectRadiusSession({ username: effectivePhone, macAddress: tx.mac_address });
+        if (coa.attempted) {
+            console.log(`CoA disconnect attempted: username=${effectivePhone} mac=${tx.mac_address} success=${coa.successCount}/${coa.hosts.length}`);
+        }
     } catch (err) {
         await conn.rollback();
         console.error("Database Update Error:", err);
@@ -689,6 +707,15 @@ app.post('/api/recover', async (req, res) => {
         }
 
         const tx = txRows[0];
+        const txPhoneRaw = String(tx.phone_number || '').trim();
+        const normalizedTxPhone = txPhoneRaw ? formatPhoneNumber(txPhoneRaw) : '';
+        let effectivePhone = formattedCallbackPhone;
+        if (normalizedTxPhone) {
+            if (formattedCallbackPhone && normalizedTxPhone !== formattedCallbackPhone) {
+                console.warn(`Callback phone mismatch: tx=${normalizedTxPhone} callback=${formattedCallbackPhone} checkout=${checkoutReqId}`);
+            }
+            effectivePhone = normalizedTxPhone;
+        }
         const txVendorId = tx.vendor_id || await getDefaultVendorId();
         const macPolicy = await getMacPolicy(normalizedMac, txVendorId);
         if (macPolicy.blocked && !macPolicy.whitelisted) {
