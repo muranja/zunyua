@@ -1,20 +1,21 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Inter:wght@400;500;600&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
-  --bg-main: #0A0A0B;
-  --bg-surface: #141415;
-  --border-subtle: #1F1F21;
-  --border-active: #2D2D30;
-  --text-primary: #F4F4F5;
-  --text-secondary: #A1A1AA;
-  --text-muted: #52525B;
+  --bg-main: #0B1120; /* Deep Slate/Navy instead of pure black */
+  --bg-surface: rgba(30, 41, 59, 0.4); /* Glass surface */
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --border-active: rgba(255, 255, 255, 0.2);
+  --text-primary: #F8FAFC;
+  --text-secondary: #94A3B8;
+  --text-muted: #64748B;
   --accent: #3B82F6;
+  --accent-glow: rgba(59, 130, 246, 0.5);
   
-  font-family: 'Inter', sans-serif;
+  font-family: 'Outfit', 'Inter', sans-serif;
   -webkit-tap-highlight-color: transparent;
   background-color: var(--bg-main);
   color: var(--text-primary);
@@ -23,67 +24,70 @@
 body {
   margin: 0;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   overscroll-behavior: none;
   background-color: var(--bg-main);
+  background-image: 
+    radial-gradient(circle at 15% 50%, rgba(59, 130, 246, 0.05), transparent 25%),
+    radial-gradient(circle at 85% 30%, rgba(16, 185, 129, 0.05), transparent 25%);
 }
 
-/* Industrial Component Styles */
-.panel-container {
-  @apply bg-[#111112] border border-[#1F1F21] rounded-lg shadow-sm;
-}
-
-.industrial-button {
-  @apply px-4 py-3 rounded-md font-bold text-sm tracking-tight uppercase transition-all duration-200 active:scale-[0.98];
+/* Glass & Premium Component Styles */
+.glass-panel {
+  @apply bg-[#1e293b]/40 backdrop-blur-xl border border-white/10 shadow-xl;
 }
 
 .ticket-card {
-  @apply relative p-6 bg-[#161617] border border-[#1F1F21] hover:border-[#2D2D30] transition-colors rounded-xl overflow-hidden cursor-pointer;
+  @apply relative p-5 bg-white/[0.02] border border-white/5 hover:border-white/10 hover:bg-white/[0.04] transition-all duration-300 rounded-2xl overflow-hidden cursor-pointer;
+}
+
+.ticket-card.selected {
+  @apply border-blue-500/50 bg-blue-500/10 shadow-[0_0_15px_rgba(59,130,246,0.1)];
+}
+
+.premium-button {
+  @apply px-4 py-4 rounded-xl font-bold tracking-wide transition-all duration-300 active:scale-[0.98] shadow-lg flex items-center justify-center gap-2;
+}
+
+.premium-input {
+  @apply w-full bg-black/20 border border-white/10 rounded-xl py-4 px-5 text-xl font-bold tracking-widest text-white focus:outline-none focus:border-blue-500/50 focus:bg-black/40 transition-all placeholder:text-slate-600;
 }
 
 .status-badge {
-  @apply inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold tracking-widest uppercase border;
+  @apply inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold tracking-wide border;
 }
 
 /* Scrollbar Refinement */
 ::-webkit-scrollbar {
-  width: 4px;
+  width: 6px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #27272A;
-  border-radius: 2px;
+  background: rgba(255,255,255,0.1);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255,255,255,0.2);
 }
 
 /* Standardized Typography */
 h1, h2, h3 {
-  @apply tracking-tight font-extrabold;
+  font-family: 'Outfit', sans-serif;
+  @apply tracking-tight font-bold;
 }
 
-.mono-label {
-  font-family: 'JetBrains Mono', monospace;
-  @apply text-[10px] uppercase tracking-tighter;
+.glass-pill {
+  @apply flex items-center justify-center gap-2 py-3 px-4 bg-white/5 border border-white/10 rounded-full font-medium hover:bg-white/10 transition-all active:scale-95;
 }
 
-/* Mobile Fixes */
-input, button {
-  min-height: 48px;
-  @apply rounded-lg;
-}
-
-@media (min-width: 768px) {
-  input, button {
-    min-height: auto;
-  }
-}
-
+/* Safe Area Spacing for Mobile Browsers */
 .safe-area-spacing {
   padding-top: env(safe-area-inset-top);
   padding-bottom: env(safe-area-inset-bottom);
 }
 
-/* Utilities */
 .custom-scrollbar::-webkit-scrollbar { width: 4px; }
 .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-.custom-scrollbar::-webkit-scrollbar-thumb { background: #1E293B; border-radius: 4px; }
+.custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 4px; }

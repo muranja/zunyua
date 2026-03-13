@@ -8,16 +8,16 @@ CREATE TABLE IF NOT EXISTS plans (
     price DECIMAL(10,2) NOT NULL,
     duration_minutes INT NOT NULL,
     vendor_id INT NULL,
-    speed_limit_down VARCHAR(10) DEFAULT '5M',
+    speed_limit_down VARCHAR(10) DEFAULT '3M',
     speed_limit_up VARCHAR(10) DEFAULT '2M',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Insert default plans
 INSERT INTO plans (name, price, duration_minutes, speed_limit_down) VALUES
-('6 Hours', 20, 360, '5M'),
-('12 Hours', 30, 720, '5M'),
-('24 Hours', 40, 1440, '5M'),
+('6 Hours', 20, 360, '3M'),
+('12 Hours', 30, 720, '3M'),
+('24 Hours', 40, 1440, '3M'),
 ('7 Days', 250, 10080, '8M'),
 ('2 Weeks', 500, 20160, '10M'),
 ('1 Month', 1000, 43200, '10M')
@@ -69,6 +69,8 @@ CREATE TABLE IF NOT EXISTS access_tokens (
     vendor_id INT NULL,
     expires_at TIMESTAMP NOT NULL,
     status ENUM('ACTIVE', 'EXPIRED', 'REVOKED') DEFAULT 'ACTIVE',
+    speed_limit_down VARCHAR(10) NULL,
+    speed_limit_up VARCHAR(10) NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (plan_id) REFERENCES plans(id),
     FOREIGN KEY (vendor_id) REFERENCES vendors(id) ON DELETE SET NULL,
@@ -250,4 +252,3 @@ INSERT INTO admin_users (username, password_hash, role) VALUES
 ON DUPLICATE KEY UPDATE username=username;
 
 UPDATE admin_users SET is_super_admin = TRUE WHERE username = 'MIKDash';
-

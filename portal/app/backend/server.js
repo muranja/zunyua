@@ -54,6 +54,15 @@ async function hasIndex(tableName, indexName) {
     return rows.length > 0;
 }
 
+async function hasTable(tableName) {
+    const [rows] = await db.query(
+        `SELECT 1 FROM information_schema.TABLES
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? LIMIT 1`,
+        [tableName]
+    );
+    return rows.length > 0;
+}
+
 async function ensureRuntimeSchema() {
     await ensureVendorSchema();
     await ensurePolicyTables();
@@ -72,6 +81,30 @@ async function ensureRuntimeSchema() {
     }
     if (!(await hasColumn('admin_users', 'totp_temp_secret'))) {
         await safeExecute('ALTER TABLE admin_users ADD COLUMN totp_temp_secret VARCHAR(64) NULL');
+    }
+    // Drop legacy UNIQUE index on access_tokens.mac_address to allow re-purchases on same device.
+    if (await hasIndex('access_tokens', 'mac_address')) {
+        await safeExecute('ALTER TABLE access_tokens DROP INDEX mac_address');
+    }
+    if (!(await hasColumn('access_tokens', 'speed_limit_down'))) {
+        await safeExecute('ALTER TABLE access_tokens ADD COLUMN speed_limit_down VARCHAR(10) NULL');
+    }
+    if (!(await hasColumn('access_tokens', 'speed_limit_up'))) {
+        await safeExecute('ALTER TABLE access_tokens ADD COLUMN speed_limit_up VARCHAR(10) NULL');
+    }
+    if (!(await hasIndex('access_tokens', 'idx_mac'))) {
+        await safeExecute('ALTER TABLE access_tokens ADD INDEX idx_mac (mac_address)');
+    }
+    if (await hasTable('radacct')) {
+        if (!(await hasIndex('radacct', 'idx_radacct_ip_time'))) {
+            await safeExecute('CREATE INDEX idx_radacct_ip_time ON radacct (framedipaddress, acctstarttime)');
+        }
+        if (!(await hasIndex('radacct', 'idx_radacct_user_time'))) {
+            await safeExecute('CREATE INDEX idx_radacct_user_time ON radacct (username, acctstarttime)');
+        }
+        if (!(await hasIndex('radacct', 'idx_radacct_mac_time'))) {
+            await safeExecute('CREATE INDEX idx_radacct_mac_time ON radacct (callingstationid, acctstarttime)');
+        }
     }
     await safeExecute(`
         CREATE TABLE IF NOT EXISTS receipt_recovery_attempts (
@@ -352,7 +385,7 @@ app.get('/api/payment-status/:checkoutRequestId', async (req, res) => {
 
     try {
         const [rows] = await db.query(
-            'SELECT status, access_token_id FROM transactions WHERE transaction_id = ?',
+            'SELECT status, access_token_id, phone_number, mac_address FROM transactions WHERE transaction_id = ?',
             [checkoutRequestId]
         );
 
@@ -363,14 +396,18 @@ app.get('/api/payment-status/:checkoutRequestId', async (req, res) => {
         const tx = rows[0];
 
         if (tx.status === 'COMPLETED' && tx.access_token_id) {
-            // Get the expiration time to show on the success screen
+            // Get the expiration time and final assigned phone/mac to show on the success screen
             const [accessRows] = await db.query(
-                'SELECT expires_at FROM access_tokens WHERE id = ?',
+                'SELECT expires_at, phone_number, mac_address FROM access_tokens WHERE id = ?',
                 [tx.access_token_id]
             );
+            
             return res.json({
                 status: 'COMPLETED',
-                expiresAt: accessRows.length > 0 ? accessRows[0].expires_at : null
+                expiresAt: accessRows.length > 0 ? accessRows[0].expires_at : null,
+                phoneNumber: accessRows.length > 0 ? accessRows[0].phone_number : tx.phone_number,
+                macAddress: accessRows.length > 0 ? accessRows[0].mac_address : tx.mac_address,
+                loginIdentity: accessRows.length > 0 ? accessRows[0].mac_address : tx.mac_address
             });
         }
 
@@ -403,6 +440,7 @@ app.post('/api/callback', async (req, res) => {
 
     const checkoutReqId = callbackData.CheckoutRequestID;
     const resultCode = Number(callbackData.ResultCode);
+    console.log(`Callback parsed: checkout=${checkoutReqId} result=${resultCode}`);
 
     if (resultCode !== 0) {
         await db.execute('UPDATE transactions SET status = ? WHERE transaction_id = ? AND status = "PENDING"', ['FAILED', checkoutReqId]);
@@ -418,6 +456,7 @@ app.post('/api/callback', async (req, res) => {
         console.error('Callback missing required metadata:', checkoutReqId);
         return res.json({ result: 'ok' });
     }
+    console.log(`Callback metadata: checkout=${checkoutReqId} receipt=${mpesaReceiptNumber} phone=${phoneNumber}`);
 
     const conn = await db.getConnection();
     try {
@@ -434,6 +473,7 @@ app.post('/api/callback', async (req, res) => {
         }
 
         const tx = txRows[0];
+        console.log(`Callback tx locked: id=${tx.id} status=${tx.status} mac=${tx.mac_address} plan=${tx.plan_id} vendor=${tx.vendor_id || 'default'}`);
         if (tx.status === 'COMPLETED' && tx.access_token_id) {
             await conn.commit();
             return res.json({ result: 'ok' });
@@ -452,6 +492,7 @@ app.post('/api/callback', async (req, res) => {
         const plan = planRows[0];
         const durationSeconds = plan ? plan.duration_minutes * 60 : 3600;
         const expiresAt = new Date(Date.now() + durationSeconds * 1000);
+        console.log(`Callback plan resolved: plan=${tx.plan_id} duration=${durationSeconds}s expires=${expiresAt.toISOString()}`);
 
         await conn.execute(
             'UPDATE access_tokens SET status = "EXPIRED" WHERE mac_address = ? AND status = "ACTIVE"',
@@ -459,15 +500,18 @@ app.post('/api/callback', async (req, res) => {
         );
 
         const accessToken = generateAccessToken();
-        const [accessResult] = await conn.execute(
-            'INSERT INTO access_tokens (token, phone_number, mac_address, plan_id, expires_at, vendor_id) VALUES (?, ?, ?, ?, ?, ?)',
-            [accessToken, phoneNumber, tx.mac_address, tx.plan_id, expiresAt, tx.vendor_id || (await getDefaultVendorId())]
+        console.log(`Callback access token generated: token=${accessToken} mac=${tx.mac_address}`);
+        const [result] = await conn.execute(
+            'INSERT INTO access_tokens (token, phone_number, mac_address, plan_id, expires_at, status, vendor_id, speed_limit_down, speed_limit_up) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            [accessToken, phoneNumber, tx.mac_address, tx.plan_id, expiresAt, 'ACTIVE', tx.vendor_id || (await getDefaultVendorId()), plan.speed_limit_down, plan.speed_limit_up]
         );
+        console.log(`Callback access token inserted: access_token_id=${result.insertId}`);
 
         await conn.execute(
             'UPDATE transactions SET status = ?, mpesa_receipt = ?, completed_at = NOW(), access_token_id = ? WHERE id = ?',
-            ['COMPLETED', mpesaReceiptNumber, accessResult.insertId, tx.id]
+            ['COMPLETED', mpesaReceiptNumber, result.insertId, tx.id]
         );
+        console.log(`Callback transaction completed: tx_id=${tx.id} receipt=${mpesaReceiptNumber}`);
 
         const [userCheck] = await conn.query('SELECT id FROM radcheck WHERE username = ?', [phoneNumber]);
         if (userCheck.length === 0) {
@@ -475,6 +519,7 @@ app.post('/api/callback', async (req, res) => {
                 "INSERT INTO radcheck (username, attribute, op, value) VALUES (?, 'Cleartext-Password', ':=', ?)",
                 [phoneNumber, phoneNumber]
             );
+            console.log(`RADIUS user created: username=${phoneNumber}`);
         }
 
         const [macCheck] = await conn.query('SELECT id FROM radcheck WHERE username = ?', [tx.mac_address]);
@@ -483,6 +528,7 @@ app.post('/api/callback', async (req, res) => {
                 "INSERT INTO radcheck (username, attribute, op, value) VALUES (?, 'Cleartext-Password', ':=', ?)",
                 [tx.mac_address, tx.mac_address]
             );
+            console.log(`RADIUS MAC user created: username=${tx.mac_address}`);
         }
 
         await conn.execute('DELETE FROM radreply WHERE username = ?', [phoneNumber]);
@@ -496,9 +542,11 @@ app.post('/api/callback', async (req, res) => {
             "INSERT INTO radreply (username, attribute, op, value) VALUES (?, 'Session-Timeout', '=', ?)",
             [tx.mac_address, String(durationSeconds)]
         );
+        console.log(`RADIUS session timeout set: username=${phoneNumber} mac=${tx.mac_address} seconds=${durationSeconds}`);
 
         if (plan && plan.speed_limit_down) {
-            const limitValue = `${plan.speed_limit_down}/${plan.speed_limit_down}`;
+            const uploadLimit = plan.speed_limit_up || '2M';
+            const limitValue = `${uploadLimit}/${plan.speed_limit_down}`;
             await conn.execute(
                 "INSERT INTO radreply (username, attribute, op, value) VALUES (?, 'Mikrotik-Rate-Limit', '=', ?)",
                 [phoneNumber, limitValue]
@@ -507,6 +555,7 @@ app.post('/api/callback', async (req, res) => {
                 "INSERT INTO radreply (username, attribute, op, value) VALUES (?, 'Mikrotik-Rate-Limit', '=', ?)",
                 [tx.mac_address, limitValue]
             );
+            console.log(`RADIUS rate limit set: username=${phoneNumber} mac=${tx.mac_address} limit=${limitValue}`);
         }
 
         await conn.commit();
@@ -684,15 +733,15 @@ app.post('/api/recover', async (req, res) => {
         const accessToken = generateAccessToken();
         const expiresAt = new Date(Date.now() + durationSeconds * 1000);
 
-        const [accessResult] = await db.execute(
-            'INSERT INTO access_tokens (token, phone_number, mac_address, plan_id, expires_at, vendor_id) VALUES (?, ?, ?, ?, ?, ?)',
-            [accessToken, String(tx.phone_number), normalizedMac, tx.plan_id, expiresAt, tx.vendor_id || (await getDefaultVendorId())]
+        const [result] = await db.execute(
+            'INSERT INTO access_tokens (token, phone_number, mac_address, plan_id, expires_at, status, vendor_id, speed_limit_down, speed_limit_up) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            [accessToken, String(tx.phone_number), normalizedMac, tx.plan_id, expiresAt, 'ACTIVE', tx.vendor_id || (await getDefaultVendorId()), plan.speed_limit_down, plan.speed_limit_up]
         );
 
         // Update the transaction to map to the new MAC and access_token_id
         await db.execute(
             'UPDATE transactions SET mac_address = ?, access_token_id = ? WHERE id = ?',
-            [normalizedMac, accessResult.insertId, tx.id]
+            [normalizedMac, result.insertId, tx.id]
         );
 
         // --- FreeRADIUS Integration ---
@@ -724,7 +773,8 @@ app.post('/api/recover', async (req, res) => {
         await db.execute("INSERT INTO radreply (username, attribute, op, value) VALUES (?, 'Session-Timeout', '=', ?)", [normalizedMac, String(durationSeconds)]);
 
         if (plan && plan.speed_limit_down) {
-            const limitValue = `${plan.speed_limit_down}/${plan.speed_limit_down}`;
+            const uploadLimit = plan.speed_limit_up || '2M';
+            const limitValue = `${uploadLimit}/${plan.speed_limit_down}`;
             await db.execute("INSERT INTO radreply (username, attribute, op, value) VALUES (?, 'Mikrotik-Rate-Limit', '=', ?)", [phoneNumberStr, limitValue]);
             await db.execute("INSERT INTO radreply (username, attribute, op, value) VALUES (?, 'Mikrotik-Rate-Limit', '=', ?)", [normalizedMac, limitValue]);
         }
@@ -755,4 +805,3 @@ app.listen(PORT, () => {
     console.log(`📊 Admin API: http://localhost:${PORT}/api/admin`);
     console.log(`👤 Customer API: http://localhost:${PORT}/api`);
 });
-

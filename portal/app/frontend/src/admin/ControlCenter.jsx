@@ -5,11 +5,16 @@ const API_URL = import.meta.env.DEV ? 'http://localhost:3000/api/admin' : '/api/
 
 export default function ControlCenter() {
     const [settings, setSettings] = useState(null);
+    const [routerSettings, setRouterSettings] = useState({
+        host: '', port: '8728', user: 'admin', pass: '', tls: false,
+        globalLimitDown: '12M', globalLimitUp: '12M', dynamicLimiting: false
+    });
     const [plans, setPlans] = useState([]);
     const [loading, setLoading] = useState(true);
     const [busy, setBusy] = useState(false);
     const [msg, setMsg] = useState('');
-    const [newPlan, setNewPlan] = useState({ name: '', price: '', durationMinutes: '', speedLimitDown: '5M', speedLimitUp: '2M' });
+    const [newPlan, setNewPlan] = useState({ name: '', price: '', durationMinutes: '', speedLimitDown: '3M', speedLimitUp: '2M' });
+    const [planEdits, setPlanEdits] = useState({});
     const [health, setHealth] = useState(null);
     const [reconDate, setReconDate] = useState(new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10));
     const [reconReport, setReconReport] = useState(null);
@@ -44,12 +49,26 @@ export default function ControlCenter() {
             }
             const hRes = await fetch(`${API_URL}/system/health`, { headers: authHeaders() }).then((r) => r.json());
             if (hRes.success) setHealth(hRes.checks);
-        } finally {
+ 
+             const rRes = await fetch(`${API_URL}/router/settings`, { headers: authHeaders() }).then((r) => r.json());
+             if (rRes.success) setRouterSettings(prev => ({ ...prev, ...rRes.settings }));
+         } finally {
             setLoading(false);
         }
     };
 
     useEffect(() => { loadData(); }, []);
+    useEffect(() => {
+        if (!plans.length) return;
+        const next = {};
+        plans.forEach((p) => {
+            next[p.id] = {
+                speedLimitDown: p.speed_limit_down || '',
+                speedLimitUp: p.speed_limit_up || ''
+            };
+        });
+        setPlanEdits(next);
+    }, [plans]);
 
     const updateSettings = async (patch) => {
         setBusy(true);
@@ -86,8 +105,43 @@ export default function ControlCenter() {
             setBusy(false);
         }
     };
-
-    const testAlert = async () => {
+ 
+     const updateRouterSettings = async (patch) => {
+         setBusy(true);
+         setMsg('');
+         try {
+             const res = await fetch(`${API_URL}/router/settings`, {
+                 method: 'PUT',
+                 headers: authHeaders(),
+                 body: JSON.stringify(patch)
+             });
+             const data = await res.json();
+             if (!res.ok || !data.success) throw new Error(data.error || 'Failed to update router settings');
+             setRouterSettings(prev => ({ ...prev, ...patch }));
+             setMsg('Router settings synchronized');
+         } catch (err) {
+             setMsg(err.message);
+         } finally {
+             setBusy(false);
+         }
+     };
+ 
+     const testRouterConnection = async () => {
+         setBusy(true);
+         setMsg('');
+         try {
+             const res = await fetch(`${API_URL}/router/test`, { method: 'POST', headers: authHeaders() });
+             const data = await res.json();
+             if (!res.ok || !data.success) throw new Error(data.error || 'Connection failed');
+             setMsg('MikroTik API Handshake: OK');
+         } catch (err) {
+             setMsg(err.message);
+         } finally {
+             setBusy(false);
+         }
+     };
+ 
+     const testAlert = async () => {
         await runAction('/system/test-alert', 'Test alert dispatched');
     };
 
@@ -239,7 +293,31 @@ export default function ControlCenter() {
             const data = await res.json();
             if (!res.ok || !data.success) throw new Error(data.error || 'Failed to create plan');
             setMsg('Plan created');
-            setNewPlan({ name: '', price: '', durationMinutes: '', speedLimitDown: '5M', speedLimitUp: '2M' });
+            setNewPlan({ name: '', price: '', durationMinutes: '', speedLimitDown: '3M', speedLimitUp: '2M' });
+            loadData();
+        } catch (err) {
+            setMsg(err.message);
+        } finally {
+            setBusy(false);
+        }
+    };
+
+    const savePlanUpdate = async (id) => {
+        setBusy(true);
+        setMsg('');
+        try {
+            const patch = planEdits[id] || {};
+            const res = await fetch(`${API_URL}/plans/${id}`, {
+                method: 'PUT',
+                headers: authHeaders(),
+                body: JSON.stringify({
+                    speedLimitDown: patch.speedLimitDown,
+                    speedLimitUp: patch.speedLimitUp
+                })
+            });
+            const data = await res.json();
+            if (!res.ok || !data.success) throw new Error(data.error || 'Failed to update plan');
+            setMsg('Plan updated');
             loadData();
         } catch (err) {
             setMsg(err.message);
@@ -329,11 +407,106 @@ export default function ControlCenter() {
                         RUN_CLEANUP
                     </button>
                     <div className="text-[10px] text-zinc-600 uppercase tracking-widest flex items-center gap-2">
-                        <ShieldAlert className="w-4 h-4" />
-                        These actions affect all customers immediately.
-                    </div>
-                </div>
-            </div>
+                         <ShieldAlert className="w-4 h-4" />
+                         These actions affect all customers immediately.
+                     </div>
+                 </div>
+             </div>
+ 
+             <div className="border border-zinc-800 p-4 bg-zinc-900/20 space-y-4">
+                 <div className="flex items-center justify-between">
+                     <div className="text-xs text-zinc-400 uppercase tracking-widest flex items-center gap-2">
+                         <Server className="w-4 h-4 text-emerald-500" />
+                         Router API & Global Shaping
+                     </div>
+                     <button 
+                         onClick={testRouterConnection}
+                         disabled={busy}
+                         className="px-2 py-1 border border-zinc-700 text-zinc-500 hover:text-emerald-400 text-[10px] uppercase tracking-widest"
+                     >
+                         TEST_API_LINK
+                     </button>
+                 </div>
+ 
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                     <div className="space-y-2">
+                         <div className="text-[10px] text-zinc-600 uppercase">API Credentials</div>
+                         <div className="grid grid-cols-2 gap-2">
+                             <input 
+                                 placeholder="HOST" 
+                                 className="bg-black border border-zinc-800 p-2 text-xs text-zinc-300" 
+                                 value={routerSettings.host} 
+                                 onChange={(e) => setRouterSettings({...routerSettings, host: e.target.value})}
+                             />
+                             <input 
+                                 placeholder="PORT" 
+                                 className="bg-black border border-zinc-800 p-2 text-xs text-zinc-300" 
+                                 value={routerSettings.port} 
+                                 onChange={(e) => setRouterSettings({...routerSettings, port: e.target.value})}
+                             />
+                             <input 
+                                 placeholder="USER" 
+                                 className="bg-black border border-zinc-800 p-2 text-xs text-zinc-300" 
+                                 value={routerSettings.user} 
+                                 onChange={(e) => setRouterSettings({...routerSettings, user: e.target.value})}
+                             />
+                             <input 
+                                 type="password"
+                                 placeholder="PASS" 
+                                 className="bg-black border border-zinc-800 p-2 text-xs text-zinc-300" 
+                                 value={routerSettings.pass} 
+                                 onChange={(e) => setRouterSettings({...routerSettings, pass: e.target.value})}
+                             />
+                         </div>
+                         <button 
+                             onClick={() => updateRouterSettings({ host: routerSettings.host, port: routerSettings.port, user: routerSettings.user, pass: routerSettings.pass })}
+                             disabled={busy}
+                             className="w-full px-3 py-2 border border-zinc-800 text-zinc-400 text-[10px] uppercase tracking-widest hover:border-emerald-500/50"
+                         >
+                             SAVE_CREDENTIALS
+                         </button>
+                     </div>
+ 
+                     <div className="space-y-2">
+                         <div className="text-[10px] text-zinc-600 uppercase">Throughput Control</div>
+                         <div className="grid grid-cols-2 gap-2">
+                             <div className="space-y-1">
+                                 <span className="text-[9px] text-zinc-600">DOWN_CAP</span>
+                                 <input 
+                                     placeholder="e.g 12M" 
+                                     className="w-full bg-black border border-zinc-800 p-2 text-xs text-zinc-300" 
+                                     value={routerSettings.globalLimitDown} 
+                                     onChange={(e) => setRouterSettings({...routerSettings, globalLimitDown: e.target.value})}
+                                 />
+                             </div>
+                             <div className="space-y-1">
+                                 <span className="text-[9px] text-zinc-600">UP_CAP</span>
+                                 <input 
+                                     placeholder="e.g 12M" 
+                                     className="w-full bg-black border border-zinc-800 p-2 text-xs text-zinc-300" 
+                                     value={routerSettings.globalLimitUp} 
+                                     onChange={(e) => setRouterSettings({...routerSettings, globalLimitUp: e.target.value})}
+                                 />
+                             </div>
+                         </div>
+                         <label className="flex items-center justify-between p-2 bg-black border border-zinc-800">
+                             <span className="text-[10px] text-zinc-400 uppercase">PCQ Fair Sharing</span>
+                             <input 
+                                 type="checkbox" 
+                                 checked={routerSettings.dynamicLimiting} 
+                                 onChange={(e) => updateRouterSettings({ dynamicLimiting: e.target.checked })}
+                             />
+                         </label>
+                         <button 
+                             onClick={() => updateRouterSettings({ globalLimitDown: routerSettings.globalLimitDown, globalLimitUp: routerSettings.globalLimitUp })}
+                             disabled={busy}
+                             className="w-full px-3 py-2 border border-emerald-500/30 text-emerald-400 text-[10px] uppercase tracking-widest hover:bg-emerald-500/5"
+                         >
+                             APPLY_LIMITS
+                         </button>
+                     </div>
+                 </div>
+             </div>
 
             {health && (
                 <div className="border border-zinc-800 p-4 bg-zinc-900/20">
@@ -419,12 +592,33 @@ export default function ControlCenter() {
                 <div className="space-y-2">
                     {plans.map((p) => (
                         <div key={p.id} className="flex items-center justify-between border border-zinc-800 p-2 text-xs">
-                            <div className="text-zinc-300">
-                                {p.name} | KES {p.price} | {p.duration_minutes}m | {p.speed_limit_down}/{p.speed_limit_up}
+                            <div className="flex-1 text-zinc-300">
+                                {p.name} | KES {p.price} | {p.duration_minutes}m
                             </div>
-                            <button onClick={() => deletePlan(p.id)} disabled={busy} className="px-2 py-1 border border-zinc-700 text-zinc-400 hover:text-rose-400 hover:border-rose-500/40">
-                                <Trash2 className="w-4 h-4" />
-                            </button>
+                            <div className="flex items-center gap-2">
+                                <input
+                                    className="bg-black border border-zinc-800 p-1 text-[10px] text-zinc-300 w-16"
+                                    value={planEdits[p.id]?.speedLimitDown ?? ''}
+                                    onChange={(e) => setPlanEdits({ ...planEdits, [p.id]: { ...planEdits[p.id], speedLimitDown: e.target.value } })}
+                                    placeholder="DOWN"
+                                />
+                                <input
+                                    className="bg-black border border-zinc-800 p-1 text-[10px] text-zinc-300 w-16"
+                                    value={planEdits[p.id]?.speedLimitUp ?? ''}
+                                    onChange={(e) => setPlanEdits({ ...planEdits, [p.id]: { ...planEdits[p.id], speedLimitUp: e.target.value } })}
+                                    placeholder="UP"
+                                />
+                                <button
+                                    onClick={() => savePlanUpdate(p.id)}
+                                    disabled={busy}
+                                    className="px-2 py-1 border border-emerald-500/40 text-emerald-400"
+                                >
+                                    <Save className="w-4 h-4" />
+                                </button>
+                                <button onClick={() => deletePlan(p.id)} disabled={busy} className="px-2 py-1 border border-zinc-700 text-zinc-400 hover:text-rose-400 hover:border-rose-500/40">
+                                    <Trash2 className="w-4 h-4" />
+                                </button>
+                            </div>
                         </div>
                     ))}
                 </div>

@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Connection Successful</title>
+    <!-- Mikrotik will replace $(link-orig) if there is one -->
+    <script>
+        function closePortal() {
+            // First, try the standard window.close()
+            setTimeout(function() {
+                window.close();
+                
+                // If it's still open, redirect to the native success endpoints
+                setTimeout(function() {
+                    var userAgent = window.navigator.userAgent || "";
+                    if (userAgent.match(/iPad|iPhone|iPod|Mac/i)) {
+                        window.location.href = "http://captive.apple.com/hotspot-detect.html";
+                    } else if (userAgent.match(/Android/i)) {
+                        window.location.href = "http://connectivitycheck.gstatic.com/generate_204";
+                    } else {
+                        window.location.href = "http://www.google.com";
+                    }
+                }, 500);
+            }, 1500);
+        }
+    </script>
+    <style>
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background: #0B1120;
+            color: #F8FAFC;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            text-align: center;
+            margin: 0;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        .container {
+            background: rgba(30, 41, 59, 0.4);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 40px 30px;
+            border-radius: 24px;
+            max-width: 400px;
+            width: 100%;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.5);
+        }
+        .check-icon {
+            width: 70px; 
+            height: 70px;
+            background: rgba(16, 185, 129, 0.1);
+            border: 2px solid rgba(16, 185, 129, 0.3);
+            border-radius: 50%;
+            display: flex; 
+            align-items: center; 
+            justify-content: center;
+            margin: 0 auto 20px;
+        }
+        .check-icon svg {
+            width: 35px;
+            height: 35px;
+            color: #10b981;
+        }
+        h2 { margin: 0 0 10px; font-size: 24px; font-weight: 800; }
+        p { color: #94a3b8; font-size: 15px; margin: 0 0 25px; line-height: 1.5; }
+        button {
+            background: #3B82F6; 
+            color: white; 
+            border: none;
+            padding: 14px 24px; 
+            border-radius: 12px; 
+            font-weight: bold;
+            font-size: 16px;
+            cursor: pointer;
+            width: 100%;
+            transition: background 0.2s;
+        }
+        button:active { background: #2563EB; transform: scale(0.98); }
+    </style>
+</head>
+<body onload="closePortal()">
+    <div class="container">
+        <div class="check-icon">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path>
+            </svg>
+        </div>
+        <h2>Connection Successful!</h2>
+        <p>You are securely connected to the internet.<br>This window should close automatically.</p>
+        <button onclick="closePortal()">Close Window</button>
+    </div>
+</body>
+</html>

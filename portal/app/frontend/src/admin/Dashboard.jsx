@@ -10,7 +10,9 @@ const API_URL = import.meta.env.DEV ? 'http://localhost:3000/api/admin' : '/api/
 
 export default function Dashboard() {
     const [stats, setStats] = useState(null);
+    const [sessions, setSessions] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [routerLoading, setRouterLoading] = useState(false);
     const [error, setError] = useState('');
     const authHeaders = () => ({ 'Authorization': `Bearer ${localStorage.getItem('accessToken')}`, 'Content-Type': 'application/json' });
 
@@ -34,11 +36,52 @@ export default function Dashboard() {
             setLoading(false);
         }
     };
+ 
+     const fetchRouterStats = async () => {
+         try {
+             setRouterLoading(true);
+             const res = await fetch(`${API_URL}/router/stats`, { headers: authHeaders() });
+             if (res.ok) {
+                 const data = await res.json();
+                 if (data.success) setSessions(data.sessions || []);
+             }
+         } catch (err) {
+             console.error('Router stats error:', err);
+         } finally {
+             setRouterLoading(false);
+         }
+     };
 
     // Add this hook to trigger the fetch when the component loads
     useEffect(() => {
         fetchStats();
+        fetchRouterStats();
+        const interval = setInterval(fetchRouterStats, 5000); // Poll every 5s
+        return () => clearInterval(interval);
     }, []);
+
+    const handleDisconnect = async (username, macAddress) => {
+        if (!confirm(`Are you sure you want to kick ${username}?`)) return;
+        
+        try {
+            const res = await fetch(`${API_URL}/router/disconnect`, {
+                method: 'POST',
+                headers: authHeaders(),
+                body: JSON.stringify({ username, macAddress })
+            });
+            const data = await res.json();
+            if (data.success) {
+                alert('User kicked successfully.');
+                fetchRouterStats();
+            } else {
+                alert('Failed to kick user: ' + data.error);
+            }
+        } catch (err) {
+            console.error('Kick error:', err);
+            alert('A system error occurred while trying to kick the user.');
+        }
+    };
+
 
     if (loading) {
         return (
@@ -167,8 +210,63 @@ export default function Dashboard() {
                     </motion.div>
                 ))}
             </div>
-
-            {/* Terminal-style Transaction Log */}
+ 
+             {/* Live Unit Monitor */}
+             <div className="border border-zinc-800 bg-[#0a0a0a]">
+                 <div className="border-b border-zinc-800 p-3 bg-zinc-900/50 flex items-center justify-between">
+                     <div className="text-xs font-mono text-zinc-400 flex items-center gap-2">
+                         <Wifi className={`w-4 h-4 ${routerLoading ? 'text-emerald-500 animate-pulse' : 'text-emerald-500'}`} />
+                         LIVE_UNIT_MONITOR
+                     </div>
+                     <div className="text-[10px] font-mono text-zinc-600 uppercase">
+                         {sessions.length} ACTIVE_SESSIONS
+                     </div>
+                 </div>
+                 <div className="overflow-x-auto max-h-[300px] overflow-y-auto custom-scrollbar">
+                     <table className="w-full text-left border-collapse font-mono text-[11px]">
+                         <thead className="bg-zinc-900/80 text-zinc-500 sticky top-0 z-10 backdrop-blur-sm">
+                             <tr>
+                                 <th className="p-2 font-normal">USER_ID</th>
+                                 <th className="p-2 font-normal">IP_ADDR</th>
+                                 <th className="p-2 font-normal">UPTIME</th>
+                                 <th className="p-2 font-normal">TX/RX_RATE</th>
+                                 <th className="p-2 font-normal text-right">VOLUME</th>
+                                 <th className="p-2 font-normal text-center">ACTION</th>
+                             </tr>
+                         </thead>
+                         <tbody className="text-zinc-300 divide-y divide-zinc-800/50">
+                             {sessions.map((s) => (
+                                 <tr key={s.id} className="hover:bg-emerald-500/5 transition-colors border-l-2 border-transparent hover:border-emerald-500/30">
+                                     <td className="p-2 text-emerald-400">{s.user}</td>
+                                     <td className="p-2 text-zinc-500">{s.address}</td>
+                                     <td className="p-2 text-zinc-400">{s.uptime}</td>
+                                     <td className="p-2 font-bold text-zinc-200">{s.rate}</td>
+                                     <td className="p-2 text-right text-zinc-500">
+                                         {(parseInt(s.bytesOut || 0) / 1024 / 1024).toFixed(1)}MB ↓
+                                     </td>
+                                     <td className="p-2 text-center">
+                                         <button 
+                                             onClick={() => handleDisconnect(s.user, s.mac)}
+                                             className="px-2 py-1 bg-red-500/10 text-red-500 hover:bg-red-500/20 hover:text-red-400 border border-red-500/30 text-[9px] uppercase tracking-wider transition-colors"
+                                         >
+                                             KICK
+                                         </button>
+                                     </td>
+                                 </tr>
+                             ))}
+                             {sessions.length === 0 && (
+                                 <tr>
+                                     <td colSpan="6" className="p-8 text-center text-zinc-600 italic uppercase tracking-widest text-[10px]">
+                                         Waiting for router telemetry...
+                                     </td>
+                                 </tr>
+                             )}
+                         </tbody>
+                     </table>
+                 </div>
+             </div>
+ 
+             {/* Terminal-style Transaction Log */}
             <div className="border border-zinc-800 bg-[#0a0a0a]">
                 <div className="border-b border-zinc-800 p-3 bg-zinc-900/50 flex items-center justify-between">
                     <div className="text-xs font-mono text-zinc-400 flex items-center gap-2">

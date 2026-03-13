@@ -1,4 +1,5 @@
 const { spawn } = require('child_process');
+const { disconnectHotspotUser } = require('./mikrotik');
 
 function execRadclient(host, secret, attrs = []) {
     return new Promise((resolve) => {
@@ -21,37 +22,44 @@ function execRadclient(host, secret, attrs = []) {
 }
 
 async function disconnectRadiusSession({ username, macAddress }) {
-    if (String(process.env.RADIUS_COA_ENABLED || '').toLowerCase() !== 'true') {
-        return { attempted: false, reason: 'RADIUS_COA_ENABLED is not true' };
+    const result = { coaAttempted: false, mikrotikApi: null };
+
+    // 1. Try RADIUS CoA (Packet of Disconnect) if enabled
+    if (String(process.env.RADIUS_COA_ENABLED || '').toLowerCase() === 'true') {
+        const secret = process.env.RADIUS_SECRET || process.env.RADIUS_SHARED_SECRET;
+        const hosts = String(process.env.MIKROTIK_COA_HOSTS || '')
+            .split(',')
+            .map((h) => h.trim())
+            .filter(Boolean);
+
+        if (secret && hosts.length > 0) {
+            const attrs = [];
+            if (username) attrs.push(`User-Name = "${username}"`);
+            if (macAddress) attrs.push(`Calling-Station-Id = "${macAddress}"`);
+
+            if (attrs.length > 0) {
+                const results = await Promise.all(hosts.map((host) => execRadclient(host, secret, attrs)));
+                const successCount = results.filter((r) => r.code === 0).length;
+                result.coaAttempted = true;
+                result.coaResults = { hosts, successCount, failedCount: results.length - successCount, results };
+            }
+        }
     }
 
-    const secret = process.env.RADIUS_SECRET || process.env.RADIUS_SHARED_SECRET;
-    const hosts = String(process.env.MIKROTIK_COA_HOSTS || '')
-        .split(',')
-        .map((h) => h.trim())
-        .filter(Boolean);
-
-    if (!secret || hosts.length === 0) {
-        return { attempted: false, reason: 'Missing RADIUS secret or MIKROTIK_COA_HOSTS' };
+    // 2. Always try MikroTik API as a reliable fallback
+    try {
+        result.mikrotikApi = await disconnectHotspotUser({ username, macAddress });
+        console.log(`[CoA] MikroTik API disconnect result:`, JSON.stringify(result.mikrotikApi));
+    } catch (err) {
+        console.error('[CoA] MikroTik API disconnect failed:', err.message);
+        result.mikrotikApi = { success: false, error: err.message };
     }
 
-    const attrs = [];
-    if (username) attrs.push(`User-Name = "${username}"`);
-    if (macAddress) attrs.push(`Calling-Station-Id = "${macAddress}"`);
-    if (attrs.length === 0) return { attempted: false, reason: 'No session identifiers provided' };
-
-    const results = await Promise.all(hosts.map((host) => execRadclient(host, secret, attrs)));
-    const successCount = results.filter((r) => r.code === 0).length;
-
-    return {
-        attempted: true,
-        hosts,
-        successCount,
-        failedCount: results.length - successCount,
-        results
-    };
+    result.attempted = result.coaAttempted || (result.mikrotikApi && result.mikrotikApi.success);
+    return result;
 }
 
 module.exports = {
     disconnectRadiusSession
 };
+
