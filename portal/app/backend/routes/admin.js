@@ -10,6 +10,7 @@ const { disconnectRadiusSession } = require('../utils/radiusCoa');
 const { ensureSystemSettingsTable, getSettingsMap } = require('../utils/systemSettings');
 const { notifyAdmin } = require('../utils/notifier');
 const { getAdminScope } = require('../utils/vendorScope');
+const { fetchActiveSessions, updateGlobalQueue, getMikroTikClient } = require('../utils/mikrotik');
 const jwt = require('jsonwebtoken');
 
 function validateStrongPassword(password) {
@@ -879,7 +880,7 @@ router.get('/plans', verifyToken, async (req, res) => {
 });
 
 router.post('/plans', verifyToken, async (req, res) => {
-    const { name, price, durationMinutes, speedLimitDown = '5M', speedLimitUp = '2M', vendorId } = req.body;
+    const { name, price, durationMinutes, speedLimitDown = '3M', speedLimitUp = '2M', vendorId } = req.body;
     const ip = req.ip || req.connection.remoteAddress;
 
     if (!name || !price || !durationMinutes) {
@@ -1411,5 +1412,124 @@ router.delete('/vendors/:id/api-keys/:keyId', verifyToken, async (req, res) => {
         res.status(500).json({ error: 'Server error' });
     }
 });
+ 
+ // ==================== MIKROTIK ROUTER ROUTES ====================
+ 
+ router.get('/router/settings', verifyToken, async (req, res) => {
+     try {
+         await assertSuperAdmin(req, res);
+         const settings = await getSettingsMap();
+         res.json({
+             success: true,
+             settings: {
+                 host: settings.router_api_host || '',
+                 port: settings.router_api_port || '8728',
+                 user: settings.router_api_user || '',
+                 tls: settings.router_api_tls === 'true',
+                 globalLimitDown: settings.router_global_limit_down || '12M',
+                 globalLimitUp: settings.router_global_limit_up || '12M',
+                 dynamicLimiting: settings.router_dynamic_limiting === 'true'
+             }
+         });
+     } catch (err) {
+         console.error('Get router settings error:', err);
+         res.status(500).json({ error: 'Server error' });
+     }
+ });
+ 
+ router.put('/router/settings', verifyToken, async (req, res) => {
+     try {
+         await assertSuperAdmin(req, res);
+         const { host, port, user, pass, tls, globalLimitDown, globalLimitUp, dynamicLimiting } = req.body;
+ 
+         const queries = [];
+         if (host !== undefined) queries.push(db.execute("INSERT INTO system_settings (setting_key, setting_value) VALUES ('router_api_host', ?) ON DUPLICATE KEY UPDATE setting_value = ?", [host, host]));
+         if (port !== undefined) queries.push(db.execute("INSERT INTO system_settings (setting_key, setting_value) VALUES ('router_api_port', ?) ON DUPLICATE KEY UPDATE setting_value = ?", [port, port]));
+         if (user !== undefined) queries.push(db.execute("INSERT INTO system_settings (setting_key, setting_value) VALUES ('router_api_user', ?) ON DUPLICATE KEY UPDATE setting_value = ?", [user, user]));
+         if (pass !== undefined) queries.push(db.execute("INSERT INTO system_settings (setting_key, setting_value) VALUES ('router_api_pass', ?) ON DUPLICATE KEY UPDATE setting_value = ?", [pass, pass]));
+         if (tls !== undefined) queries.push(db.execute("INSERT INTO system_settings (setting_key, setting_value) VALUES ('router_api_tls', ?) ON DUPLICATE KEY UPDATE setting_value = ?", [String(tls), String(tls)]));
+         if (globalLimitDown !== undefined) queries.push(db.execute("INSERT INTO system_settings (setting_key, setting_value) VALUES ('router_global_limit_down', ?) ON DUPLICATE KEY UPDATE setting_value = ?", [globalLimitDown, globalLimitDown]));
+         if (globalLimitUp !== undefined) queries.push(db.execute("INSERT INTO system_settings (setting_key, setting_value) VALUES ('router_global_limit_up', ?) ON DUPLICATE KEY UPDATE setting_value = ?", [globalLimitUp, globalLimitUp]));
+         if (dynamicLimiting !== undefined) queries.push(db.execute("INSERT INTO system_settings (setting_key, setting_value) VALUES ('router_dynamic_limiting', ?) ON DUPLICATE KEY UPDATE setting_value = ?", [String(dynamicLimiting), String(dynamicLimiting)]));
+ 
+         await Promise.all(queries);
+ 
+         // If global limits changed, update MikroTik
+         if (globalLimitDown || globalLimitUp) {
+             try {
+                 const settings = await getSettingsMap();
+                 await updateGlobalQueue(
+                     globalLimitDown || settings.router_global_limit_down || '12M',
+                     globalLimitUp || settings.router_global_limit_up || '12M'
+                 );
+             } catch (mikrotikErr) {
+                 console.warn('Settings saved but MikroTik update failed:', mikrotikErr.message);
+             }
+         }
+ 
+         res.json({ success: true, message: 'Router settings updated' });
+     } catch (err) {
+         console.error('Update router settings error:', err);
+         res.status(500).json({ error: 'Server error' });
+     }
+ });
+ 
+ router.post('/router/test', verifyToken, async (req, res) => {
+     try {
+         await assertSuperAdmin(req, res);
+         const client = await getMikroTikClient();
+         await client.write('/system/identity/print');
+         res.json({ success: true, message: 'Connection successful' });
+     } catch (err) {
+         res.status(500).json({ error: err.message || 'Connection failed' });
+     }
+ });
+ 
+ router.get('/router/stats', verifyToken, async (req, res) => {
+     try {
+         const scope = await assertSuperAdmin(req, res);
+         if (!scope) return;
+ 
+         const sessions = await fetchActiveSessions();
+         res.json({ success: true, sessions });
+     } catch (err) {
+         console.error('Fetch router stats error:', err);
+         res.status(500).json({ error: 'Failed to fetch live stats from router' });
+     }
+ });
 
+ router.post('/router/disconnect', verifyToken, async (req, res) => {
+     try {
+         const scope = await assertSuperAdmin(req, res);
+         if (!scope) return;
+         
+         const { username, macAddress } = req.body;
+         if (!username && !macAddress) {
+             return res.status(400).json({ success: false, error: 'Username or MAC address is required' });
+         }
+
+         // Update DB token status if username provided
+         if (username) {
+             await db.execute(
+                 "UPDATE access_tokens SET status = 'REVOKED' WHERE value = ? AND status = 'ACTIVE'",
+                 [username]
+             );
+         }
+
+         // Call MikroTik API directly
+         const { disconnectHotspotUser } = require('../utils/mikrotik');
+         const routerRes = await disconnectHotspotUser({ username, macAddress });
+
+         if (routerRes && routerRes.success) {
+             res.json({ success: true, message: 'User disconnected from network', ...routerRes });
+         } else {
+             // If we failed to talk to router but revoked in DB, we still "succeeded" partially
+             res.json({ success: true, message: 'Token revoked, but router disconnect failed: ' + (routerRes ? routerRes.error : 'Unknown'), partiallyFailed: true });
+         }
+     } catch (err) {
+         console.error('Router disconnect error:', err);
+         res.status(500).json({ success: false, error: 'Failed to disconnect user from router' });
+     }
+ });
+ 
 module.exports = router;

@@ -6,6 +6,7 @@ const { normalizeMac } = require('../utils/generators');
 const { ensurePolicyTables } = require('../utils/macPolicy');
 const { disconnectRadiusSession } = require('../utils/radiusCoa');
 const { getAdminScope, getDefaultVendorId } = require('../utils/vendorScope');
+const { disconnectHotspotUser } = require('../utils/mikrotik');
 
 // ==================== LIST ACTIVE USERS ====================
 router.get('/', verifyToken, async (req, res) => {
@@ -24,8 +25,8 @@ router.get('/', verifyToken, async (req, res) => {
                 at.created_at,
                 p.name as plan_name,
                 p.price as plan_price,
-                p.speed_limit_down,
-                p.speed_limit_up,
+                COALESCE(at.speed_limit_down, p.speed_limit_down) as speed_limit_down,
+                COALESCE(at.speed_limit_up, p.speed_limit_up) as speed_limit_up,
                 TIMESTAMPDIFF(MINUTE, NOW(), at.expires_at) as minutes_remaining
             FROM access_tokens at
             LEFT JOIN plans p ON at.plan_id = p.id
@@ -61,7 +62,8 @@ router.get('/all', verifyToken, async (req, res) => {
                 at.expires_at,
                 at.created_at,
                 p.name as plan_name,
-                p.speed_limit_down
+                COALESCE(at.speed_limit_down, p.speed_limit_down) as speed_limit_down,
+                COALESCE(at.speed_limit_up, p.speed_limit_up) as speed_limit_up
             FROM access_tokens at
             LEFT JOIN plans p ON at.plan_id = p.id
             WHERE 1=1
@@ -236,26 +238,41 @@ router.post('/:id/speed', verifyToken, async (req, res) => {
 
         const user = users[0];
         const upload = uploadSpeed || downloadSpeed;
-        const rateLimit = `${downloadSpeed}/${upload}`;
+        const rateLimit = `${upload}/${downloadSpeed}`;
 
-        // Update RADIUS rate limit
-        // First check if it exists
-        const [existing] = await db.query(
-            'SELECT id FROM radreply WHERE username = ? AND attribute = ?',
-            [user.phone_number, 'Mikrotik-Rate-Limit']
+        // Update RADIUS rate limit for phone and MAC
+        const targets = [user.phone_number, user.mac_address].filter(Boolean);
+        for (const target of targets) {
+            const [existing] = await db.query(
+                'SELECT id FROM radreply WHERE username = ? AND attribute = ?',
+                [target, 'Mikrotik-Rate-Limit']
+            );
+
+            if (existing.length > 0) {
+                await db.execute(
+                    'UPDATE radreply SET value = ? WHERE username = ? AND attribute = ?',
+                    [rateLimit, target, 'Mikrotik-Rate-Limit']
+                );
+            } else {
+                await db.execute(
+                    'INSERT INTO radreply (username, attribute, op, value) VALUES (?, ?, ?, ?)',
+                    [target, 'Mikrotik-Rate-Limit', '=', rateLimit]
+                );
+            }
+        }
+
+        // Update access_tokens table so the UI reflects the change
+        await db.execute(
+            'UPDATE access_tokens SET speed_limit_down = ?, speed_limit_up = ? WHERE id = ?',
+            [downloadSpeed, uploadSpeed || downloadSpeed, id]
         );
 
-        if (existing.length > 0) {
-            await db.execute(
-                'UPDATE radreply SET value = ? WHERE username = ? AND attribute = ?',
-                [rateLimit, user.phone_number, 'Mikrotik-Rate-Limit']
-            );
-        } else {
-            await db.execute(
-                'INSERT INTO radreply (username, attribute, op, value) VALUES (?, ?, ?, ?)',
-                [user.phone_number, 'Mikrotik-Rate-Limit', '=', rateLimit]
-            );
-        }
+        // Trigger CoA (Disconnect) to apply speed immediately
+        const coaResult = await disconnectRadiusSession({
+            username: user.phone_number,
+            macAddress: user.mac_address
+        });
+        console.log(`CoA Attempt for ${user.phone_number}:`, JSON.stringify(coaResult));
 
         await logActivity(req.admin.id, 'USER_SPEED_CHANGE', {
             userId: id,
@@ -490,7 +507,8 @@ router.post('/add', verifyToken, async (req, res) => {
         // Get plan details if planId provided
         let duration = durationMinutes;
         let planName = 'Manual';
-        let speedLimit = '5M';
+        let speedLimit = '3M';
+        let uploadLimit = '2M';
 
         if (planId) {
             const [plans] = await db.query(
@@ -502,7 +520,8 @@ router.post('/add', verifyToken, async (req, res) => {
             }
             duration = plans[0].duration_minutes;
             planName = plans[0].name;
-            speedLimit = plans[0].speed_limit_down || '5M';
+            speedLimit = plans[0].speed_limit_down || '3M';
+            uploadLimit = plans[0].speed_limit_up || speedLimit;
         }
 
         // Generate access token
@@ -527,8 +546,8 @@ router.post('/add', verifyToken, async (req, res) => {
 
         // Create access token
         const [result] = await db.execute(
-            'INSERT INTO access_tokens (token, phone_number, mac_address, plan_id, expires_at, status, vendor_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
-            [token, phoneNumber, mac, planId || 1, expiresAt, 'ACTIVE', vendorId]
+            'INSERT INTO access_tokens (token, phone_number, mac_address, plan_id, expires_at, status, vendor_id, speed_limit_down, speed_limit_up) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            [token, phoneNumber, mac, planId || 1, expiresAt, 'ACTIVE', vendorId, speedLimit, uploadLimit]
         );
 
         // Create RADIUS user
@@ -551,7 +570,7 @@ router.post('/add', verifyToken, async (req, res) => {
         // Set speed limit
         await db.execute(
             "INSERT INTO radreply (username, attribute, op, value) VALUES (?, 'Mikrotik-Rate-Limit', '=', ?)",
-            [phoneNumber, `${speedLimit}/${speedLimit}`]
+            [phoneNumber, `${uploadLimit || speedLimit}/${speedLimit}`]
         );
 
         await logActivity(req.admin.id, 'USER_MANUAL_ADD', {
@@ -607,6 +626,12 @@ router.delete('/:id', verifyToken, async (req, res) => {
             username: user.phone_number,
             macAddress: user.mac_address
         });
+        
+        // Ensure physical connection drop (CoA fails remotely)
+        const mtResult = await disconnectHotspotUser({ 
+            username: user.phone_number, 
+            macAddress: user.mac_address 
+        });
 
         await logActivity(req.admin.id, 'USER_DELETE', {
             userId: id,
@@ -622,4 +647,3 @@ router.delete('/:id', verifyToken, async (req, res) => {
 });
 
 module.exports = router;
-

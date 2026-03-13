@@ -44,7 +44,6 @@ desktop.ini
 
 # Project specific
 n8n_raw_backup.tar.gz
-log.txt
 Vps.md
 test-multi-vendor.js
 portal/app/backend/test-modules.js

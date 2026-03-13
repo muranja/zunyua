@@ -34,7 +34,7 @@ router.post('/voucher/redeem', async (req, res) => {
     try {
         // Find voucher
         const [vouchers] = await db.query(
-            'SELECT v.*, p.name as plan_name, p.duration_minutes, p.speed_limit_down FROM vouchers v JOIN plans p ON v.plan_id = p.id WHERE v.code = ?',
+            'SELECT v.*, p.name as plan_name, p.duration_minutes, p.speed_limit_down, p.speed_limit_up FROM vouchers v JOIN plans p ON v.plan_id = p.id WHERE v.code = ?',
             [code.toUpperCase()]
         );
 
@@ -93,8 +93,8 @@ router.post('/voucher/redeem', async (req, res) => {
         const expiresAt = new Date(Date.now() + voucher.duration_minutes * 60 * 1000);
 
         await db.execute(
-            'INSERT INTO access_tokens (token, phone_number, mac_address, plan_id, expires_at, vendor_id) VALUES (?, ?, ?, ?, ?, ?)',
-            [accessToken, formattedPhone, normalizedMac, voucher.plan_id, expiresAt, vendorId]
+            'INSERT INTO access_tokens (token, phone_number, mac_address, plan_id, expires_at, vendor_id, status, speed_limit_down, speed_limit_up) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            [accessToken, formattedPhone, normalizedMac, voucher.plan_id, expiresAt, vendorId, 'ACTIVE', voucher.speed_limit_down, voucher.speed_limit_up]
         );
 
         // Mark voucher as redeemed
@@ -104,7 +104,7 @@ router.post('/voucher/redeem', async (req, res) => {
         );
 
         // Create RADIUS user for WiFi access
-        await createRadiusUser(formattedPhone, voucher.duration_minutes * 60, voucher.speed_limit_down);
+        await createRadiusUser(formattedPhone, voucher.duration_minutes * 60, voucher.speed_limit_down, voucher.speed_limit_up);
 
         res.json({
             success: true,
@@ -203,7 +203,7 @@ router.post('/reaccess/claim', async (req, res) => {
     try {
         // Find re-access token
         const [reaccesTokens] = await db.query(
-            'SELECT r.*, a.*, p.name as plan_name, p.duration_minutes, p.speed_limit_down FROM reaccess_tokens r JOIN access_tokens a ON r.access_token_id = a.id JOIN plans p ON a.plan_id = p.id WHERE r.code = ?',
+            'SELECT r.*, a.*, p.name as plan_name, p.duration_minutes, p.speed_limit_down, p.speed_limit_up FROM reaccess_tokens r JOIN access_tokens a ON r.access_token_id = a.id JOIN plans p ON a.plan_id = p.id WHERE r.code = ?',
             [code.toUpperCase()]
         );
 
@@ -257,7 +257,7 @@ router.post('/reaccess/claim', async (req, res) => {
 
         // Calculate remaining time
         const remainingSeconds = Math.floor((new Date(reaccess.expires_at) - new Date()) / 1000);
-        await createRadiusUser(reaccess.phone_number, remainingSeconds, reaccess.speed_limit_down);
+        await createRadiusUser(reaccess.phone_number, remainingSeconds, reaccess.speed_limit_down, reaccess.speed_limit_up);
 
         res.json({
             success: true,
@@ -276,7 +276,7 @@ router.post('/reaccess/claim', async (req, res) => {
 
 // ==================== HELPER FUNCTIONS ====================
 
-async function createRadiusUser(username, durationSeconds, speedLimit) {
+async function createRadiusUser(username, durationSeconds, downloadLimit, uploadLimit) {
     try {
         // Check if user exists
         const [userCheck] = await db.query('SELECT id FROM radcheck WHERE username = ?', [username]);
@@ -297,10 +297,11 @@ async function createRadiusUser(username, durationSeconds, speedLimit) {
         );
 
         // Set rate limit if provided
-        if (speedLimit) {
+        if (downloadLimit) {
+            const up = uploadLimit || downloadLimit;
             await db.execute(
                 "INSERT INTO radreply (username, attribute, op, value) VALUES (?, 'Mikrotik-Rate-Limit', '=', ?)",
-                [username, `${speedLimit}/${speedLimit}`]
+                [username, `${up}/${downloadLimit}`]
             );
         }
     } catch (err) {

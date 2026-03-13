@@ -7,3 +7,10 @@ type = "tcp"
 localIP = "127.0.0.1"
 localPort = 3000
 remotePort = 3001
+
+[[proxies]]
+name = "mikrotik_api"
+type = "tcp"
+localIP = "192.168.88.1"
+localPort = 8728
+remotePort = 8728
