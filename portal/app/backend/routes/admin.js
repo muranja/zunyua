@@ -1532,4 +1532,56 @@ router.delete('/vendors/:id/api-keys/:keyId', verifyToken, async (req, res) => {
      }
  });
  
+router.post('/bundles', verifyToken, async (req, res) => {
+    const { mpesaReceipt, phoneNumber, amount, vendorId } = req.body;
+
+    if (!mpesaReceipt || !phoneNumber || !amount) {
+        return res.status(400).json({ error: 'mpesaReceipt, phoneNumber, and amount are required' });
+    }
+
+    // Only KES 1,000 qualifies for the monthly bundle
+    if (Number(amount) !== 1000) {
+        return res.status(400).json({ error: 'Monthly bundle requires exactly KES 1,000' });
+    }
+
+    const { formatPhoneNumber } = require('../utils/generators');
+    const { getDefaultVendorId } = require('../utils/vendorScope');
+
+    const formattedPhone = formatPhoneNumber(phoneNumber);
+    const receiptCode = mpesaReceipt.trim().toUpperCase();
+    const effectiveVendorId = vendorId || await getDefaultVendorId();
+
+    try {
+        // Check for duplicate receipt
+        const [existing] = await db.query(
+            'SELECT id FROM mpesa_monthly_bundles WHERE mpesa_receipt = ?',
+            [receiptCode]
+        );
+        if (existing.length > 0) {
+            return res.status(409).json({ error: 'A bundle with this receipt already exists' });
+        }
+
+        // expires_at = 30 days from now
+        const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+
+        await db.execute(
+            'INSERT INTO mpesa_monthly_bundles (mpesa_receipt, phone_number, amount, max_devices, vendor_id, status, expires_at) VALUES (?, ?, ?, 3, ?, "ACTIVE", ?)',
+            [receiptCode, formattedPhone, amount, effectiveVendorId, expiresAt]
+        );
+
+        return res.json({
+            success: true,
+            message: 'Monthly bundle created. User can now redeem with their M-Pesa receipt code.',
+            receipt: receiptCode,
+            phone: formattedPhone,
+            expiresAt,
+            maxDevices: 3
+        });
+
+    } catch (err) {
+        console.error('Admin bundle create error:', err);
+        return res.status(500).json({ error: 'Server error' });
+    }
+});
+
 module.exports = router;

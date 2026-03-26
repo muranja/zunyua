@@ -6,6 +6,9 @@
     <title>Connection Successful</title>
     <!-- Mikrotik will replace $(link-orig) if there is one -->
     <script>
+        // Clear auto-login attempt counter on successful login
+        try { sessionStorage.removeItem("turbonet_login_attempts"); } catch(e) {}
+
         function closePortal() {
             // First, try the standard window.close()
             setTimeout(function() {

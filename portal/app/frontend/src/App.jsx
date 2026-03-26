@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Wifi, Smartphone, CheckCircle, AlertCircle, Loader2, Ticket, RotateCcw, ShieldCheck, Zap, ArrowRight, Shield, ChevronRight } from 'lucide-react';
+import { Wifi, Smartphone, CheckCircle, AlertCircle, Loader2, Ticket, RotateCcw, ShieldCheck, Zap, ArrowRight, Shield, ChevronRight, Monitor, Tv } from 'lucide-react';
 import './index.css';
 
 const API_URL = import.meta.env.DEV ? 'http://192.168.100.16:3000/api' : '/api';
@@ -22,11 +22,20 @@ function App() {
     const [isAutoConnecting, setIsAutoConnecting] = useState(false);
     const [showVoucherModal, setShowVoucherModal] = useState(false);
     const [showRecoveryModal, setShowRecoveryModal] = useState(false);
+    const [showDeviceModal, setShowDeviceModal] = useState(false);
+    const [deviceMac, setDeviceMac] = useState('');
+    const [deviceLoading, setDeviceLoading] = useState(false);
+    const [deviceResult, setDeviceResult] = useState(null);
     const [voucherSuccess, setVoucherSuccess] = useState(null);
 
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
-        const mac = params.get('mac') || params.get('mac_esc');
+        const mac = params.get('mac') ||
+            params.get('mac_esc') ||
+            params.get('macaddr') ||
+            params.get('mac_address') ||
+            params.get('client_mac') ||
+            params.get('clientMac');
         const lUrl = params.get('login_url');
         if (mac) {
             setMacAddress(mac);
@@ -88,6 +97,10 @@ function App() {
             setError('Please enter a valid Safaricom number');
             setLoading(false); return;
         }
+        if (!macAddress) {
+            setError('Device not detected. Please connect to the WiFi hotspot and open the portal from that device.');
+            setLoading(false); return;
+        }
         try {
             const res = await axios.post(`${API_URL}/stkpush`, {
                 phoneNumber: phone, amount: selectedPlan.price, planId: selectedPlan.id, macAddress
@@ -102,7 +115,7 @@ function App() {
                     setStep(3);
                 }
             } else setError(res.data.message || "Payment request failed");
-        } catch (err) { setError("Connection error. Please try again."); }
+        } catch (err) { setError(err.response?.data?.error || "Connection error. Please try again."); }
         finally { setLoading(false); }
     };
 
@@ -144,6 +157,27 @@ function App() {
             return () => clearTimeout(timer);
         }
     }, [step, voucherSuccess]);
+
+    const handleAuthorizeDevice = async (e) => {
+        e.preventDefault();
+        setDeviceLoading(true);
+        setDeviceResult(null);
+        try {
+            const res = await axios.post(`${API_URL}/authorize-device`, {
+                macAddress: deviceMac,
+                phoneNumber: loginIdentity || phoneNumber
+            });
+            if (res.data.success) {
+                setDeviceResult({ success: true, message: res.data.message || 'Device authorized!' });
+            } else {
+                setDeviceResult({ success: false, message: res.data.error || 'Authorization failed' });
+            }
+        } catch (err) {
+            setDeviceResult({ success: false, message: err.response?.data?.error || 'Connection error' });
+        } finally {
+            setDeviceLoading(false);
+        }
+    };
 
     return (
         <div className="min-h-screen flex items-center justify-center p-4 sm:p-6 lg:p-12 overflow-x-hidden selection:bg-blue-500/30">
@@ -314,6 +348,10 @@ function App() {
                                         {isAutoConnecting ? <><Loader2 className="w-5 h-5 animate-spin" /> Connecting Device...</> : <>Tap to Connect Now</>}
                                     </button>
                                 </form>
+
+                                <button onClick={() => { setShowDeviceModal(true); setDeviceResult(null); setDeviceMac(''); }} className="w-full glass-pill text-sm text-slate-300 mt-2">
+                                    <Tv className="w-4 h-4" /> Connect a Smart TV or another device
+                                </button>
                             </motion.div>
                         )}
                     </AnimatePresence>
@@ -388,10 +426,52 @@ function App() {
                     </motion.div>
                 </div>
             )}
+             </AnimatePresence>
+
+            {/* Device Authorization Modal (Smart TV / secondary device) */}
+            <AnimatePresence>
+            {showDeviceModal && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-50 flex items-center justify-center p-4">
+                    <motion.div initial={{ scale: 0.95, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.95, opacity: 0, y: 20 }} className="glass-panel w-full max-w-sm p-6 sm:p-8 rounded-3xl flex flex-col gap-6">
+                         <div className="text-center">
+                             <div className="w-12 h-12 bg-emerald-500/10 rounded-full flex items-center justify-center mx-auto mb-3 border border-emerald-500/20">
+                                 <Tv className="w-6 h-6 text-emerald-400" />
+                             </div>
+                             <h3 className="text-xl font-bold text-white">Connect Another Device</h3>
+                             <p className="text-sm text-slate-400 mt-1">Enter the MAC address of your Smart TV or other device. Find it in your TV's Settings &gt; Network &gt; MAC Address.</p>
+                         </div>
+
+                         <form onSubmit={handleAuthorizeDevice} className="flex flex-col gap-4">
+                             <input
+                                type="text"
+                                className="premium-input text-center font-mono tracking-wider"
+                                placeholder="AA:BB:CC:DD:EE:FF"
+                                value={deviceMac}
+                                onChange={(e) => setDeviceMac(e.target.value)}
+                             />
+
+                             {deviceResult && (
+                                <div className={`text-sm font-bold flex items-center gap-2 p-3 rounded-lg border ${deviceResult.success ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' : 'text-red-400 bg-red-500/10 border-red-500/20'}`}>
+                                    {deviceResult.success ? <CheckCircle className="w-4 h-4 flex-shrink-0" /> : <AlertCircle className="w-4 h-4 flex-shrink-0" />}
+                                    {deviceResult.message}
+                                </div>
+                             )}
+
+                             <div className="flex flex-col gap-3 mt-2">
+                                <button type="submit" disabled={deviceLoading || !deviceMac} className="premium-button bg-emerald-500 hover:bg-emerald-400 text-white shadow-emerald-500/20">
+                                    {deviceLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Authorize Device'}
+                                </button>
+                                <button type="button" onClick={() => setShowDeviceModal(false)} className="premium-button bg-white/5 hover:bg-white/10 text-white border border-white/10">
+                                    Close
+                                </button>
+                             </div>
+                         </form>
+                    </motion.div>
+                </div>
+            )}
             </AnimatePresence>
         </div>
     );
 }
 
 export default App;
-

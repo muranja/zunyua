@@ -30,7 +30,7 @@ sudo cp turbowifi.conf /etc/nginx/sites-available/turbowifi
 sudo ln -s /etc/nginx/sites-available/turbowifi /etc/nginx/sites-enabled/
 
 # Get SSL certificate
-sudo certbot --nginx -d turbowifi.duckdns.org --non-interactive --agree-tos --email your@email.com
+sudo certbot --nginx -d 136.117.23.173 --non-interactive --agree-tos --email your@email.com
 ```
 
 ### Step 4: PM2 Process Manager
@@ -111,7 +111,7 @@ scp -i ~/.ssh/id_ed25519_gcp -r dist/* aspenhorgan254@136.117.23.173:~/turbonet/
 ```
 
 ### Step 4: Verify Fix
-Login at https://turbowifi.duckdns.org/admin with:
+Login at https://136.117.23.173/admin with:
 - **Username:** `MIKDash`
 - **Password:** `Jz@7Hbh--@9324`
 
@@ -127,8 +127,8 @@ Login at https://turbowifi.duckdns.org/admin with:
 | Local Dev | Admin Dashboard | `admin` | `admin123` |
 
 ### Important URLs
-- **Customer Portal:** https://turbowifi.duckdns.org/
-- **Admin Panel:** https://turbowifi.duckdns.org/admin
+- **Customer Portal:** https://136.117.23.173/
+- **Admin Panel:** https://136.117.23.173/admin
 
 ### Server Commands
 ```bash

@@ -236,7 +236,7 @@ Backups are stored in `~/backups/` with 30-day retention.
 | Environment | Customer Portal | Admin Panel |
 |-------------|-----------------|-------------|
 | Development | http://localhost:5173 | http://localhost:5173/admin |
-| Production | https://turbowifi.duckdns.org | https://turbowifi.duckdns.org/admin |
+| Production | https://136.117.23.173 | https://136.117.23.173/admin |
 
 ---
 

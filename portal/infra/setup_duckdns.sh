@@ -1,5 +1,5 @@
 #!/bin/bash
-# Setup DuckDNS for turbowifi.duckdns.org
+# Setup DuckDNS for 136.117.23.173
 
 DUCKDNS_TOKEN="2266cd6c-a6e7-4539-beff-9ec53cc82b7a"
 DUCKDNS_DOMAIN="turbowifi"
@@ -28,4 +28,4 @@ echo "Cron job added:"
 crontab -l | grep duckdns
 
 echo ""
-echo "DuckDNS setup complete for turbowifi.duckdns.org"
+echo "DuckDNS setup complete for 136.117.23.173"

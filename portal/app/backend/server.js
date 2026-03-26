@@ -18,7 +18,7 @@ const { ensureSystemSettingsTable, getSetting, parseBool } = require('./utils/sy
 const { ensureVendorSchema, getDefaultVendorId } = require('./utils/vendorScope');
 const { disconnectRadiusSession } = require('./utils/radiusCoa');
 
-dotenv.config();
+dotenv.config({ path: '/home/vin/turbonet_secrets.env', override: true });
 
 const app = express();
 app.use(cors());
@@ -242,6 +242,16 @@ app.post('/api/stkpush', async (req, res) => {
     }
 
     if (!normalizedMac) {
+        console.warn('STK push rejected: missing MAC', {
+            ip: req.ip,
+            query: req.query,
+            bodyKeys: Object.keys(req.body || {}),
+            bodySample: {
+                phoneNumber: String(phoneNumber || '').slice(0, 5) + '***',
+                amount,
+                planId
+            }
+        });
         return res.status(400).json({ success: false, error: 'Valid MAC address is required' });
     }
 
@@ -250,6 +260,7 @@ app.post('/api/stkpush', async (req, res) => {
     try {
         const [planRows] = await db.query('SELECT * FROM plans WHERE id = ?', [planId]);
         if (planRows.length === 0) {
+            console.warn('STK push rejected: plan not found', { planId, mac: normalizedMac });
             return res.status(404).json({ success: false, error: 'Plan not found' });
         }
         selectedPlan = planRows[0];
@@ -328,6 +339,12 @@ app.post('/api/stkpush', async (req, res) => {
     try {
         const expectedAmount = Number(selectedPlan.price);
         if (Math.round(Number(amount)) !== Math.round(expectedAmount)) {
+            console.warn('STK push rejected: amount mismatch', {
+                mac: normalizedMac,
+                planId,
+                amount,
+                expectedAmount
+            });
             return res.status(400).json({ success: false, error: 'Amount does not match selected plan' });
         }
 
@@ -647,6 +664,28 @@ app.get('/api/check-status', async (req, res) => {
                 expiresAt: rows[0].expires_at,
                 planName: rows[0].plan_name,
                 loginIdentity: rows[0].phone_number
+            });
+        }
+
+        // --- NEW: check monthly bundle devices ---
+        // If this MAC is registered in bundle_devices AND the bundle is active,
+        // return active=true so login.html auto-logs them in.
+        const [bundleRows] = await db.query(
+            `SELECT b.phone_number, b.expires_at
+             FROM bundle_devices bd
+             JOIN mpesa_monthly_bundles b ON bd.bundle_id = b.id
+             WHERE bd.mac_address = ?
+               AND b.status = 'ACTIVE'
+               AND b.expires_at > NOW()
+             LIMIT 1`,
+            [mac]
+        );
+        if (bundleRows.length > 0) {
+            return res.json({
+                active: true,
+                expiresAt: bundleRows[0].expires_at,
+                planName: 'Monthly Bundle',
+                loginIdentity: bundleRows[0].phone_number
             });
         }
 

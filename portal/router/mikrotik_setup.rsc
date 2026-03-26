@@ -49,6 +49,9 @@
     /ip dhcp-server network add address=$lanNet gateway=192.168.88.1 dns-server=192.168.88.1
 }
 
+# Battle-Hardening: DHCP Lease Time
+/ip dhcp-server set [find name=$dhcpServer] lease-time=30m
+
 # ============ 1. RADIUS SERVER ============
 :if ([:len [/radius find address=$radiusIP service=hotspot]] = 0) do={
     /radius add address=$radiusIP secret=$radiusSecret service=hotspot timeout=3000ms
@@ -80,6 +83,10 @@
 :if ([:len [/ip hotspot walled-garden ip find dst-host="login.turbowifi.net"]] = 0) do={
     /ip hotspot walled-garden ip add action=accept dst-host="login.turbowifi.net" comment="Portal Hostname"
 }
+# REMOVED: Google DNS from Walled Garden as it bypasses the portal redirection
+/ip hotspot walled-garden ip remove [find dst-address=8.8.8.8]
+/ip hotspot walled-garden ip remove [find dst-address=8.8.4.4]
+
 :if ([:len [/ip hotspot walled-garden ip find dst-host="*.safaricom.co.ke"]] = 0) do={
     /ip hotspot walled-garden ip add action=accept dst-host="*.safaricom.co.ke" comment="Safaricom"
 }
@@ -123,6 +130,44 @@
     /ip firewall filter add action=reject chain=hs-unauth comment="Block DoH NextDNS Alt (unauth)" dst-address=45.90.30.0 dst-port=443 protocol=tcp reject-with=tcp-reset
 }
 
+# Force DoT (DNS over TLS) Fallback
+# Rejecting port 853 forces clients like Android/Linux/Mac to fallback to standard DNS (53)
+:if ([:len [/ip firewall filter find comment="Block DoT (unauth)"]] = 0) do={
+    /ip firewall filter add action=reject chain=hs-unauth comment="Block DoT (unauth)" dst-port=853 protocol=tcp reject-with=tcp-reset
+}
+
+# Block ALL HTTPS (port 443) for unauthenticated users
+# This forces browsers to fall back to HTTP where the captive portal redirect works.
+# Without this, Chrome/Firefox go straight to HTTPS and the portal never appears.
+:if ([:len [/ip firewall filter find comment="Block HTTPS all (unauth) - forces captive portal"]] = 0) do={
+    /ip firewall filter add action=reject chain=hs-unauth comment="Block HTTPS all (unauth) - forces captive portal" dst-port=443 protocol=tcp reject-with=tcp-reset
+}
+
+# Block QUIC (UDP 443) for unauthenticated users
+# Google/YouTube use HTTP/3 (QUIC) over UDP 443. Without this, browsers can
+# bypass the captive portal entirely by connecting via QUIC.
+:if ([:len [/ip firewall filter find comment="Block QUIC UDP 443 (unauth)"]] = 0) do={
+    /ip firewall filter add action=reject chain=hs-unauth comment="Block QUIC UDP 443 (unauth)" dst-port=443 protocol=udp reject-with=icmp-admin-prohibited
+}
+
+# Block Google/YouTube IPs directly for unauthenticated users
+# Chrome has pre-cached DNS and HSTS — it can connect to these IPs without DNS.
+:if ([:len [/ip firewall filter find comment="Block Google direct (unauth)"]] = 0) do={
+    /ip firewall filter add action=reject chain=hs-unauth comment="Block Google direct (unauth)" dst-address=142.250.0.0/15 protocol=tcp reject-with=tcp-reset
+}
+:if ([:len [/ip firewall filter find comment="Block YouTube direct (unauth)"]] = 0) do={
+    /ip firewall filter add action=reject chain=hs-unauth comment="Block YouTube direct (unauth)" dst-address=208.65.152.0/22 protocol=tcp reject-with=tcp-reset
+}
+:if ([:len [/ip firewall filter find comment="Block YouTube alt (unauth)"]] = 0) do={
+    /ip firewall filter add action=reject chain=hs-unauth comment="Block YouTube alt (unauth)" dst-address=208.117.224.0/19 protocol=tcp reject-with=tcp-reset
+}
+
+# Explicit REJECT at end of hs-unauth chain — catches anything the hotspot rules miss
+# Without this, unmatched packets fall through to forward chain and get masqueraded.
+:if ([:len [/ip firewall filter find comment="Catch-all reject hs-unauth"]] = 0) do={
+    /ip firewall filter add action=reject chain=hs-unauth comment="Catch-all reject hs-unauth" reject-with=tcp-reset
+}
+
 # Force standard DNS traffic to the router for unauthenticated users only
 :if ([:len [/ip firewall nat find comment="Force_DNS_UDP (unauth)"]] = 0) do={
     /ip firewall nat add action=redirect chain=hs-unauth-to comment="Force_DNS_UDP (unauth)" dst-port=53 protocol=udp to-ports=53
@@ -136,7 +181,17 @@
     /ip firewall nat add chain=srcnat out-interface=ether1 action=masquerade comment="Internet"
 }
 
-# ============ 7. TIME SYNC ============
+# ============ 7. BATTLE-HARDENING (Production Safety) ============
+# 1. Block IPv6 - Crucial for captive portals as clients will try to bypass via IPv6
+/ipv6 settings set disable-ipv6=yes
+
+# 2. Fasttrack Bypass - Hotspot and Fasttrack are incompatible
+:if ([:len [/ip firewall filter find comment="Bypass_Fasttrack_for_Hotspot"]] = 0) do={
+    /ip firewall filter add action=accept chain=forward comment="Bypass_Fasttrack_for_Hotspot" hotspot=auth place-before=0
+    /ip firewall filter add action=accept chain=forward comment="Bypass_Fasttrack_for_Hotspot" hotspot=from-client place-before=0
+}
+
+# ============ 8. TIME SYNC ============
 /system ntp client set enabled=yes
 :if ([:len [/system ntp client servers find address="time.cloudflare.com"]] = 0) do={
     /system ntp client servers add address=time.cloudflare.com

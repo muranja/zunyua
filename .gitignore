@@ -11,7 +11,7 @@ dist-ssr/
 build/
 *.tar
 *.tar.gz
-*.zip
+*.zi
 
 # Environment & Secrets
 .env
@@ -47,3 +47,30 @@ n8n_raw_backup.tar.gz
 Vps.md
 test-multi-vendor.js
 portal/app/backend/test-modules.js
+
+# Backup zip files
+munyua_code_*.zip
+munyua-code-backup.zip
+munyua_project.zip
+files.zip
+
+# Loose log/txt files to exclude from git
+log*.txt
+*1052.txt
+*_local.txt
+*_retest_local.txt
+*_payment_local.txt
+radius_debug_*.txt
+vpn_debug_logs.txt
+radius_retest_local.txt
+pc1052.txt
+mickro1052.txt
+log.txt
+log18.txt
+log19.txt
+log2.txt
+backend_payment_local.txt
+backend_retest_local.txt
+radius_payment_local.txt
+radius_debug_local.txt
+radius_debug_final.txt
