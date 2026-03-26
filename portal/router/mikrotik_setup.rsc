@@ -165,7 +165,7 @@
 # Explicit REJECT at end of hs-unauth chain — catches anything the hotspot rules miss
 # Without this, unmatched packets fall through to forward chain and get masqueraded.
 :if ([:len [/ip firewall filter find comment="Catch-all reject hs-unauth"]] = 0) do={
-    /ip firewall filter add action=reject chain=hs-unauth comment="Catch-all reject hs-unauth" reject-with=tcp-reset
+    /ip firewall filter add action=reject chain=hs-unauth comment="Catch-all reject hs-unauth" reject-with=icmp-admin-prohibited
 }
 
 # Force standard DNS traffic to the router for unauthenticated users only
