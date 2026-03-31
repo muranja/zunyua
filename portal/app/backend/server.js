@@ -603,38 +603,6 @@ app.post('/api/callback', async (req, res) => {
     return res.json({ result: "ok" });
 });
 
-// ==================== MAC SESSION (for clean captive portal redirect) ====================
-
-const macSessions = new Map();
-
-setInterval(() => {
-    const now = Date.now();
-    for (const [sid, data] of macSessions) {
-        if (now - data.ts > 300000) macSessions.delete(sid);
-    }
-}, 60000);
-
-app.post('/api/register-mac', (req, res) => {
-    const { session, mac, loginUrl, redirect } = req.body || {};
-    if (!session || !mac) return res.status(400).json({ error: 'session and mac required' });
-    macSessions.set(session, {
-        mac: normalizeMac(mac) || mac,
-        loginUrl: loginUrl || '',
-        redirect: redirect || '',
-        ts: Date.now()
-    });
-    res.json({ ok: true });
-});
-
-app.get('/api/mac-session', (req, res) => {
-    const sid = req.query.session;
-    if (!sid) return res.json({ found: false });
-    const data = macSessions.get(sid);
-    if (!data) return res.json({ found: false });
-    macSessions.delete(sid);
-    res.json({ found: true, mac: data.mac, loginUrl: data.loginUrl, redirect: data.redirect });
-});
-
 // Basic health endpoint for uptime checks/load balancers
 app.get('/api/health', async (req, res) => {
     try {

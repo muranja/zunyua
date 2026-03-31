@@ -37,48 +37,18 @@ function App() {
 
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
+        const mac = params.get('mac') ||
+            params.get('mac_esc') ||
+            params.get('macaddr') ||
+            params.get('mac_address') ||
+            params.get('client_mac') ||
+            params.get('clientMac');
+        const lUrl = params.get('login_url');
+        if (mac) setMacAddress(mac);
+        if (lUrl) setLoginUrl(lUrl);
 
-        // Priority 1: session-based MAC (from clean captive portal redirect)
-        const sid = params.get('s');
-        if (sid) {
-            axios.get(`${API_URL}/mac-session?session=${encodeURIComponent(sid)}`)
-                .then(res => {
-                    if (res.data.found) {
-                        if (res.data.mac) setMacAddress(res.data.mac);
-                        if (res.data.loginUrl) setLoginUrl(res.data.loginUrl);
-                    }
-                })
-                .catch(() => {
-                    // Fallback to sessionStorage
-                    try {
-                        const storedMac = sessionStorage.getItem('tn_mac');
-                        const storedLurl = sessionStorage.getItem('tn_lurl');
-                        if (storedMac) setMacAddress(storedMac);
-                        if (storedLurl) setLoginUrl(storedLurl);
-                    } catch (e) {}
-                });
-        } else {
-            // Priority 2: sessionStorage fallback
-            try {
-                const storedMac = sessionStorage.getItem('tn_mac');
-                const storedLurl = sessionStorage.getItem('tn_lurl');
-                if (storedMac) {
-                    setMacAddress(storedMac);
-                    if (storedLurl) setLoginUrl(storedLurl);
-                }
-            } catch (e) {}
-
-            // Priority 3: legacy URL params (backward compat)
-            const mac = params.get('mac') ||
-                params.get('mac_esc') ||
-                params.get('macaddr') ||
-                params.get('mac_address') ||
-                params.get('client_mac') ||
-                params.get('clientMac');
-            const lUrl = params.get('login_url');
-            if (mac) setMacAddress(mac);
-            if (lUrl) setLoginUrl(lUrl);
-        }
+        // Clean the URL bar after reading params
+        window.history.replaceState({}, '', window.location.pathname);
 
         fetchBranding();
         fetchPlans();

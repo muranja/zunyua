@@ -20,10 +20,13 @@
             align-items: center;
             justify-content: center;
             color: white;
+            padding: 20px;
         }
 
-        .loader {
+        .container {
             text-align: center;
+            width: 100%;
+            max-width: 400px;
         }
 
         .spinner {
@@ -37,22 +40,70 @@
         }
 
         @keyframes spin {
-            to {
-                transform: rotate(360deg);
-            }
+            to { transform: rotate(360deg); }
         }
 
         h1 {
             font-size: 1.5rem;
-            margin-bottom: 10px;
+            margin-bottom: 8px;
         }
 
-        p {
+        .subtitle {
             color: #94a3b8;
             font-size: 0.9rem;
+            margin-bottom: 20px;
         }
+
+        .log-box {
+            background: rgba(0, 0, 0, 0.4);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 12px;
+            padding: 14px;
+            text-align: left;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            line-height: 1.7;
+            max-height: 220px;
+            overflow-y: auto;
+        }
+
+        .log-box .ok { color: #4ade80; }
+        .log-box .info { color: #94a3b8; }
+        .log-box .err { color: #f87171; }
+        .log-box .warn { color: #fbbf24; }
+        .log-box .step { color: #60a5fa; }
     </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="spinner" id="spinner"></div>
+        <h1>TurboNet</h1>
+        <p class="subtitle" id="subtitle">Connecting...</p>
+        <div class="log-box" id="logbox"></div>
+    </div>
+
     <script>
+        var logbox = document.getElementById('logbox');
+        var subtitle = document.getElementById('subtitle');
+        var spinner = document.getElementById('spinner');
+
+        function log(msg, cls) {
+            cls = cls || 'info';
+            var line = document.createElement('div');
+            line.className = cls;
+            line.textContent = msg;
+            logbox.appendChild(line);
+            logbox.scrollTop = logbox.scrollHeight;
+        }
+
+        function done(ok, msg) {
+            spinner.style.display = 'none';
+            subtitle.textContent = msg;
+            subtitle.style.color = ok ? '#4ade80' : '#f87171';
+        }
+
+        // ---- MikroTik variables (replaced by router) ----
         var macRaw = "$(mac-esc)";
         var mac = macRaw;
         try { mac = decodeURIComponent(macRaw); } catch(e) {}
@@ -62,45 +113,36 @@
         try { link = decodeURIComponent(linkRaw); } catch(e) {}
 
         var loginUrl = "$(link-login-only)";
+        var portalURL = "http://136.117.23.173";
 
-        var PORTAL = "http://136.117.23.173";
-        var API = PORTAL + "/api";
+        log('Device MAC: ' + (mac || 'NOT DETECTED'), mac ? 'ok' : 'err');
+        log('Router login: ' + (loginUrl || 'none'), 'info');
 
-        function go() {
-            var sid = Math.random().toString(36).slice(2) + Date.now().toString(36);
+        if (!mac || mac === '$(mac-esc)' || mac.indexOf(':') === -1) {
+            log('MAC address missing or invalid', 'err');
+            log('Make sure you are connected via WiFi', 'warn');
+            done(false, 'Could not detect your device');
+        } else {
+            log('Building redirect URL...', 'step');
 
-            try { sessionStorage.setItem('tn_mac', mac); } catch(e) {}
-            try { if (loginUrl) sessionStorage.setItem('tn_lurl', loginUrl); } catch(e) {}
+            var redirectURL = portalURL + "?mac=" + encodeURIComponent(mac);
+            if (link && link !== "") {
+                redirectURL += "&redirect=" + encodeURIComponent(link);
+                log('Original link saved', 'info');
+            }
+            if (loginUrl && loginUrl !== "") {
+                redirectURL += "&login_url=" + encodeURIComponent(loginUrl);
+            }
 
-            var body = JSON.stringify({
-                session: sid,
-                mac: mac,
-                loginUrl: loginUrl || '',
-                redirect: link || ''
-            });
+            log('Target: ' + portalURL, 'info');
+            log('Redirecting to portal...', 'step');
 
-            fetch(API + '/register-mac', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: body,
-                mode: 'no-cors'
-            }).catch(function(){});
-
-            setTimeout(function() {
-                window.location.href = PORTAL + '/?s=' + sid;
-            }, 400);
+            setTimeout(function () {
+                log('Opening portal...', 'ok');
+                window.location.href = redirectURL;
+            }, 800);
         }
-
-        window.onload = go;
     </script>
-</head>
-
-<body>
-    <div class="loader">
-        <div class="spinner"></div>
-        <h1>Connecting to TurboNet</h1>
-        <p>Taking you to the portal...</p>
-    </div>
 </body>
 
 </html>
