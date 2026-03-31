@@ -51,158 +51,47 @@
             color: #94a3b8;
             font-size: 0.9rem;
         }
-
-        #status-msg {
-            margin-top: 12px;
-            color: #22c55e;
-            font-size: 0.85rem;
-        }
-
-        #error-msg {
-            margin-top: 12px;
-            color: #f87171;
-            font-size: 0.85rem;
-            display: none;
-        }
     </style>
     <script>
-        // Get MAC address from MikroTik variables
-        // $(mac) and $(mac-esc) are replaced by MikroTik
-        var mac = "$(mac-esc)";
-        var link = "$(link-orig-esc)";
+        var macRaw = "$(mac-esc)";
+        var mac = macRaw;
+        try { mac = decodeURIComponent(macRaw); } catch(e) {}
 
-        // Portal and API URLs
-        var portalURL = "http://136.117.23.173";
-        var apiURL = "http://136.117.23.173:3000/api";
+        var linkRaw = "$(link-orig-esc)";
+        var link = linkRaw;
+        try { link = decodeURIComponent(linkRaw); } catch(e) {}
 
         var loginUrl = "$(link-login-only)";
 
-        // MikroTik error variable — set when a login attempt fails
-        var mikrotikError = "$(error)";
+        var PORTAL = "http://136.117.23.173";
+        var API = PORTAL + "/api";
 
-        // Track login attempts to prevent infinite loops
-        var LOGIN_ATTEMPT_KEY = "turbonet_login_attempts";
-        var MAX_LOGIN_ATTEMPTS = 2;
+        function go() {
+            var sid = Math.random().toString(36).slice(2) + Date.now().toString(36);
 
-        function getLoginAttempts() {
-            try {
-                var data = JSON.parse(sessionStorage.getItem(LOGIN_ATTEMPT_KEY) || "{}");
-                // Reset if older than 60 seconds
-                if (data.ts && (Date.now() - data.ts) > 60000) return 0;
-                return data.count || 0;
-            } catch (e) { return 0; }
+            try { sessionStorage.setItem('tn_mac', mac); } catch(e) {}
+            try { if (loginUrl) sessionStorage.setItem('tn_lurl', loginUrl); } catch(e) {}
+
+            var body = JSON.stringify({
+                session: sid,
+                mac: mac,
+                loginUrl: loginUrl || '',
+                redirect: link || ''
+            });
+
+            fetch(API + '/register-mac', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: body,
+                mode: 'no-cors'
+            }).catch(function(){});
+
+            setTimeout(function() {
+                window.location.href = PORTAL + '/?s=' + sid;
+            }, 400);
         }
 
-        function incrementLoginAttempts() {
-            try {
-                sessionStorage.setItem(LOGIN_ATTEMPT_KEY, JSON.stringify({
-                    count: getLoginAttempts() + 1,
-                    ts: Date.now()
-                }));
-            } catch (e) { }
-        }
-
-        function clearLoginAttempts() {
-            try { sessionStorage.removeItem(LOGIN_ATTEMPT_KEY); } catch (e) { }
-        }
-
-        window.onload = function () {
-            var statusMsg = document.getElementById('status-msg');
-            var errorMsg = document.getElementById('error-msg');
-
-            // If MikroTik returned an error from a previous login attempt,
-            // it means RADIUS rejected the credentials. Don't retry — go to portal.
-            if (mikrotikError && mikrotikError !== "" && mikrotikError !== "$(error)") {
-                console.error("MikroTik login error:", mikrotikError);
-                statusMsg.textContent = "Login failed. Redirecting to portal...";
-                errorMsg.textContent = "Error: " + mikrotikError;
-                errorMsg.style.display = "block";
-                clearLoginAttempts();
-                setTimeout(function() { redirectToPortal(); }, 1500);
-                return;
-            }
-
-            // Check if we've already tried auto-login too many times (loop protection)
-            if (getLoginAttempts() >= MAX_LOGIN_ATTEMPTS) {
-                console.warn("Max auto-login attempts reached, redirecting to portal");
-                statusMsg.textContent = "Redirecting to portal...";
-                clearLoginAttempts();
-                setTimeout(function() { redirectToPortal(); }, 500);
-                return;
-            }
-
-            // Normal flow: check if this device has an active subscription
-            checkActiveSubscription();
-        };
-
-        function checkActiveSubscription() {
-            var statusMsg = document.getElementById('status-msg');
-            statusMsg.textContent = "Checking subscription...";
-
-            var xhr = new XMLHttpRequest();
-            xhr.open("GET", apiURL + "/check-status?mac=" + encodeURIComponent(mac), true);
-            xhr.timeout = 5000; // 5 second timeout
-
-            xhr.onload = function () {
-                try {
-                    var data = JSON.parse(xhr.responseText);
-                    if (data.active && (data.loginIdentity || data.phoneNumber)) {
-                        // Device has active subscription — auto-login via MikroTik hotspot
-                        statusMsg.textContent = "Active package found! Connecting...";
-                        incrementLoginAttempts();
-                        autoLogin(data.loginIdentity || data.phoneNumber);
-                        return;
-                    }
-                    if (data.blocked) {
-                        statusMsg.textContent = "Device blocked by admin. Redirecting...";
-                    }
-                } catch (e) {
-                    console.error("Status check parse error:", e);
-                }
-                // No active subscription — redirect to payment portal
-                clearLoginAttempts();
-                redirectToPortal();
-            };
-
-            xhr.onerror = function () {
-                // API unreachable — redirect to portal anyway
-                clearLoginAttempts();
-                redirectToPortal();
-            };
-
-            xhr.ontimeout = function () {
-                // Timeout — redirect to portal
-                clearLoginAttempts();
-                redirectToPortal();
-            };
-
-            xhr.send();
-        }
-
-        function autoLogin(phoneNumber) {
-            // Submit the MikroTik hotspot login form with the phone number
-            // Phone number is used as both username and password (matching RADIUS setup)
-            var form = document.getElementById('login-form');
-            document.getElementById('login-username').value = phoneNumber;
-            document.getElementById('login-password').value = phoneNumber;
-            form.submit();
-        }
-
-        function redirectToPortal() {
-            var redirectURL = portalURL + "?mac=" + encodeURIComponent(mac);
-
-            if (link && link !== "" && link !== "$(link-orig-esc)") {
-                redirectURL += "&redirect=" + encodeURIComponent(link);
-            }
-
-            if (loginUrl && loginUrl !== "" && loginUrl !== "$(link-login-only)") {
-                redirectURL += "&login_url=" + encodeURIComponent(loginUrl);
-            }
-
-            setTimeout(function () {
-                window.location.href = redirectURL;
-            }, 300);
-        }
+        window.onload = go;
     </script>
 </head>
 
@@ -210,16 +99,8 @@
     <div class="loader">
         <div class="spinner"></div>
         <h1>Connecting to TurboNet</h1>
-        <p>Please wait while we connect you...</p>
-        <p id="status-msg"></p>
-        <p id="error-msg"></p>
+        <p>Taking you to the portal...</p>
     </div>
-
-    <!-- Hidden MikroTik login form for auto-login -->
-    <form id="login-form" name="login" action="$(link-login-only)" method="post" style="display:none;">
-        <input type="hidden" name="username" id="login-username" value="" />
-        <input type="hidden" name="password" id="login-password" value="" />
-    </form>
 </body>
 
 </html>

@@ -80,6 +80,9 @@
 :if ([:len [/ip hotspot walled-garden ip find dst-address=$radiusIP]] = 0) do={
     /ip hotspot walled-garden ip add action=accept dst-address=$radiusIP comment="Portal/RADIUS App"
 }
+:if ([:len [/ip hotspot walled-garden find dst-host=$radiusIP]] = 0) do={
+    /ip hotspot walled-garden add action=allow dst-host=$radiusIP comment="VPS API/Portal HTTP Proxy Bypass"
+}
 :if ([:len [/ip hotspot walled-garden ip find dst-host="login.turbowifi.net"]] = 0) do={
     /ip hotspot walled-garden ip add action=accept dst-host="login.turbowifi.net" comment="Portal Hostname"
 }

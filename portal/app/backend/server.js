@@ -603,6 +603,38 @@ app.post('/api/callback', async (req, res) => {
     return res.json({ result: "ok" });
 });
 
+// ==================== MAC SESSION (for clean captive portal redirect) ====================
+
+const macSessions = new Map();
+
+setInterval(() => {
+    const now = Date.now();
+    for (const [sid, data] of macSessions) {
+        if (now - data.ts > 300000) macSessions.delete(sid);
+    }
+}, 60000);
+
+app.post('/api/register-mac', (req, res) => {
+    const { session, mac, loginUrl, redirect } = req.body || {};
+    if (!session || !mac) return res.status(400).json({ error: 'session and mac required' });
+    macSessions.set(session, {
+        mac: normalizeMac(mac) || mac,
+        loginUrl: loginUrl || '',
+        redirect: redirect || '',
+        ts: Date.now()
+    });
+    res.json({ ok: true });
+});
+
+app.get('/api/mac-session', (req, res) => {
+    const sid = req.query.session;
+    if (!sid) return res.json({ found: false });
+    const data = macSessions.get(sid);
+    if (!data) return res.json({ found: false });
+    macSessions.delete(sid);
+    res.json({ found: true, mac: data.mac, loginUrl: data.loginUrl, redirect: data.redirect });
+});
+
 // Basic health endpoint for uptime checks/load balancers
 app.get('/api/health', async (req, res) => {
     try {
@@ -670,23 +702,27 @@ app.get('/api/check-status', async (req, res) => {
         // --- NEW: check monthly bundle devices ---
         // If this MAC is registered in bundle_devices AND the bundle is active,
         // return active=true so login.html auto-logs them in.
-        const [bundleRows] = await db.query(
-            `SELECT b.phone_number, b.expires_at
-             FROM bundle_devices bd
-             JOIN mpesa_monthly_bundles b ON bd.bundle_id = b.id
-             WHERE bd.mac_address = ?
-               AND b.status = 'ACTIVE'
-               AND b.expires_at > NOW()
-             LIMIT 1`,
-            [mac]
-        );
-        if (bundleRows.length > 0) {
-            return res.json({
-                active: true,
-                expiresAt: bundleRows[0].expires_at,
-                planName: 'Monthly Bundle',
-                loginIdentity: bundleRows[0].phone_number
-            });
+        try {
+            const [bundleRows] = await db.query(
+                `SELECT b.phone_number, b.expires_at
+                 FROM bundle_devices bd
+                 JOIN mpesa_monthly_bundles b ON bd.bundle_id = b.id
+                 WHERE bd.mac_address = ?
+                   AND b.status = 'ACTIVE'
+                   AND b.expires_at > NOW()
+                 LIMIT 1`,
+                [mac]
+            );
+            if (bundleRows.length > 0) {
+                return res.json({
+                    active: true,
+                    expiresAt: bundleRows[0].expires_at,
+                    planName: 'Monthly Bundle',
+                    loginIdentity: bundleRows[0].phone_number
+                });
+            }
+        } catch (bundleErr) {
+            // bundle_devices table may not exist yet — skip silently
         }
 
         const maintenanceMode = parseBool(await getSetting('maintenance_mode', 'false'), false);
@@ -697,12 +733,35 @@ app.get('/api/check-status', async (req, res) => {
     }
 });
 
+// Diagnostic tracking endpoint — receives logs from login.html
+app.post('/api/track', (req, res) => {
+    const { mac, event, level, elapsed, ts } = req.body || {};
+    const tag = level === 'err' ? 'TRACK_ERR' : level === 'warn' ? 'TRACK_WARN' : 'TRACK';
+    console.log(`[${tag}] mac=${mac || '?'} elapsed=${elapsed || '?'}s | ${event || 'no event'}`);
+    res.json({ ok: true });
+});
+
 // M-Pesa Receipt Recovery Endpoint
 app.post('/api/recover', async (req, res) => {
-    const { receiptNumber, macAddress } = req.body;
+    const { receiptNumber, macAddress, mpesaMessage } = req.body;
 
-    if (!receiptNumber || !macAddress) {
-        return res.status(400).json({ success: false, error: 'Receipt number and MAC address required' });
+    // Extract receipt code from either the direct code or the full M-Pesa message
+    let receiptCode = '';
+    if (receiptNumber && receiptNumber.trim()) {
+        receiptCode = receiptNumber.trim().toUpperCase();
+    } else if (mpesaMessage && mpesaMessage.trim()) {
+        // M-Pesa message format: "UCUE4B05DS Confirmed. Ksh 40.00 sent to..."
+        // The receipt code is the first word — 8-12 alphanumeric characters
+        const match = mpesaMessage.trim().match(/\b([A-Z0-9]{8,12})\b/i);
+        if (match) receiptCode = match[1].toUpperCase();
+    }
+
+    if (!receiptCode) {
+        return res.status(400).json({ success: false, error: 'Receipt code or M-Pesa message required' });
+    }
+
+    if (!macAddress) {
+        return res.status(400).json({ success: false, error: 'MAC address required' });
     }
 
     const normalizedMac = normalizeMac(macAddress);
@@ -718,7 +777,6 @@ app.post('/api/recover', async (req, res) => {
         }
 
         const requestIp = String(req.ip || req.connection.remoteAddress || '').replace('::ffff:', '');
-        const receiptCode = receiptNumber.trim().toUpperCase();
 
         const [recentRecoveryAttempts] = await db.query(
             `SELECT COUNT(*) as c FROM receipt_recovery_attempts
