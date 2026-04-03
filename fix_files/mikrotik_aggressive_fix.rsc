@@ -24,7 +24,7 @@
 # This catches ANY TCP port 80 traffic from unauthenticated users
 # and redirects it to the VPS portal
 :if ([:len [/ip firewall nat find comment="Force HTTP to VPS Portal"]] = 0) do={
-    /ip firewall nat add chain=dstnat protocol=tcp dst-port=80 action=dst-nat to-addresses=136.117.23.173 to-ports=80 comment="Force HTTP to VPS Portal" place-before=0
+    /ip firewall nat add chain=dstnat protocol=tcp dst-port=80 action=dst-nat to-addresses=136.109.224.75 to-ports=80 comment="Force HTTP to VPS Portal" place-before=0
     :put "OK: Added NAT redirect for HTTP traffic to VPS"
 } else={
     :put "SKIP: NAT redirect already exists"
@@ -43,7 +43,7 @@
 
 # ---- 5. Test from the router ----
 :put "Testing HTTP connection to VPS from router..."
-:local httpTest [/tool fetch url="http://136.117.23.173/api/health" output=as-text as-value]
+:local httpTest [/tool fetch url="http://136.109.224.75/api/health" output=as-text as-value]
 :put ("HTTP response: " . $httpTest)
 
 :put ""

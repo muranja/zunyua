@@ -14,6 +14,7 @@ export default function Dashboard() {
     const [loading, setLoading] = useState(true);
     const [routerLoading, setRouterLoading] = useState(false);
     const [error, setError] = useState('');
+    const [notifications, setNotifications] = useState([]);
     const authHeaders = () => ({ 'Authorization': `Bearer ${localStorage.getItem('accessToken')}`, 'Content-Type': 'application/json' });
 
     // Add this function to fetch the data
@@ -56,9 +57,20 @@ export default function Dashboard() {
     useEffect(() => {
         fetchStats();
         fetchRouterStats();
-        const interval = setInterval(fetchRouterStats, 5000); // Poll every 5s
+        fetchNotifications();
+        const interval = setInterval(fetchRouterStats, 5000);
         return () => clearInterval(interval);
     }, []);
+
+    const fetchNotifications = async () => {
+        try {
+            const res = await fetch(`${API_URL}/notifications`, { headers: authHeaders() });
+            if (res.ok) {
+                const data = await res.json();
+                setNotifications(data.notifications || []);
+            }
+        } catch (err) { console.error(err); }
+    };
 
     const handleDisconnect = async (username, macAddress) => {
         if (!confirm(`Are you sure you want to kick ${username}?`)) return;
@@ -170,6 +182,24 @@ export default function Dashboard() {
                     </div>
                 </div>
             </div>
+
+            {/* Notifications */}
+            {notifications.length > 0 && (
+                <div className="space-y-2">
+                    {notifications.map((n, i) => (
+                        <div key={i} className={`flex items-center gap-3 px-4 py-3 border text-xs font-mono ${
+                            n.type === 'error' ? 'border-rose-500/30 bg-rose-500/5 text-rose-400' :
+                            n.type === 'warning' ? 'border-amber-500/30 bg-amber-500/5 text-amber-400' :
+                            'border-blue-500/30 bg-blue-500/5 text-blue-400'
+                        }`}>
+                            <span className="uppercase tracking-widest font-bold">
+                                {n.type === 'error' ? 'ERR' : n.type === 'warning' ? 'WARN' : 'INFO'}:
+                            </span>
+                            <span>{n.message}</span>
+                        </div>
+                    ))}
+                </div>
+            )}
 
             {/* Industrial Data Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-0 border border-zinc-800 bg-zinc-900/20">

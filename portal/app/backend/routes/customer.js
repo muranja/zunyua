@@ -82,9 +82,9 @@ router.post('/voucher/redeem', async (req, res) => {
             return res.status(400).json({ error: 'Voucher has expired' });
         }
 
-        // Expire old tokens for this MAC before creating new
+        // Delete old tokens for this MAC to prevent UNIQUE constraint crashes
         await db.execute(
-            'UPDATE access_tokens SET status = "EXPIRED" WHERE mac_address = ? AND status = "ACTIVE"',
+            'DELETE FROM access_tokens WHERE mac_address = ? AND status IN ("ACTIVE","EXPIRED")',
             [normalizedMac]
         );
 

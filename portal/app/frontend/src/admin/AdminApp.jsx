@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-    Terminal, Ticket, Activity, LogOut, Menu, X, Server, Users, ShieldCheck, BarChart3, SlidersHorizontal
+    Terminal, Ticket, Activity, LogOut, Menu, X, Server, Users, ShieldCheck, BarChart3, SlidersHorizontal, Monitor
 } from 'lucide-react';
 
 import Login from './Login';
@@ -12,6 +12,7 @@ import ActivityLogs from './ActivityLogs';
 import Security from './Security';
 import Analytics from './Analytics';
 import ControlCenter from './ControlCenter';
+import Sessions from './Sessions';
 
 export default function AdminApp() {
     const [admin, setAdmin] = useState(null);
@@ -59,6 +60,7 @@ export default function AdminApp() {
         { id: 'dashboard', label: 'SYS.OVERVIEW', icon: Terminal },
         { id: 'users', label: 'CLIENT.DB', icon: Users },
         { id: 'vouchers', label: 'TOKENS.MGR', icon: Ticket },
+        { id: 'sessions', label: 'SESSIONS', icon: Monitor },
         { id: 'analytics', label: 'ANALYTICS', icon: BarChart3 },
         ...(admin?.isSuperAdmin ? [{ id: 'control', label: 'CONTROL_CENTER', icon: SlidersHorizontal }] : []),
         { id: 'activity', label: 'EVENT.LOGS', icon: Activity },
@@ -162,6 +164,7 @@ export default function AdminApp() {
                 {activeTab === 'dashboard' && <Dashboard />}
                 {activeTab === 'users' && <UsersPage />}
                 {activeTab === 'vouchers' && <Vouchers />}
+                {activeTab === 'sessions' && <Sessions />}
                 {activeTab === 'analytics' && <Analytics />}
                 {activeTab === 'control' && <ControlCenter />}
                 {activeTab === 'activity' && <ActivityLogs />}

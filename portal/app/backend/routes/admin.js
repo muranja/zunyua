@@ -1584,4 +1584,137 @@ router.post('/bundles', verifyToken, async (req, res) => {
     }
 });
 
+// ==================== SESSION HISTORY ====================
+
+router.get('/sessions/history', verifyToken, async (req, res) => {
+    try {
+        const scoped = await scopeFilter(req);
+        const limit = Math.min(parseInt(req.query.limit) || 50, 200);
+        const offset = parseInt(req.query.offset) || 0;
+        const search = String(req.query.search || '').trim();
+
+        let where = 'WHERE 1=1';
+        const params = [];
+
+        if (search) {
+            where += ' AND (r.username LIKE ? OR r.callingstationid LIKE ? OR r.framedipaddress LIKE ?)';
+            const s = `%${search}%`;
+            params.push(s, s, s);
+        }
+
+        const [rows] = await db.query(
+            `SELECT r.*, 
+                    TIMESTAMPDIFF(SECOND, r.acctstarttime, COALESCE(r.acctstoptime, NOW())) as duration_seconds,
+                    ROUND(r.acctinputoctets/1024/1024, 2) as data_in_mb,
+                    ROUND(r.acctoutputoctets/1024/1024, 2) as data_out_mb
+             FROM radacct r
+             ${where}
+             ORDER BY r.acctstarttime DESC
+             LIMIT ? OFFSET ?`,
+            [...params, limit, offset]
+        );
+
+        const [countResult] = await db.query(
+            `SELECT COUNT(*) as total FROM radacct r ${where}`,
+            params
+        );
+
+        res.json({ success: true, sessions: rows, total: countResult[0].total });
+    } catch (err) {
+        console.error('Session history error:', err);
+        res.status(500).json({ error: 'Failed to fetch session history' });
+    }
+});
+
+// ==================== NOTIFICATIONS ====================
+
+router.get('/notifications', verifyToken, async (req, res) => {
+    try {
+        const notifications = [];
+
+        // Check for pending payments older than 2 min
+        const [pendingTx] = await db.query(
+            "SELECT COUNT(*) as cnt FROM transactions WHERE status='PENDING' AND created_at < DATE_SUB(NOW(), INTERVAL 2 MINUTE)"
+        );
+        if (pendingTx[0].cnt > 0) {
+            notifications.push({ type: 'warning', message: `${pendingTx[0].cnt} payment(s) pending for over 2 minutes`, timestamp: new Date() });
+        }
+
+        // Check for failed payments in last hour
+        const [failedTx] = await db.query(
+            "SELECT COUNT(*) as cnt FROM transactions WHERE status='FAILED' AND created_at > DATE_SUB(NOW(), INTERVAL 1 HOUR)"
+        );
+        if (failedTx[0].cnt > 0) {
+            notifications.push({ type: 'error', message: `${failedTx[0].cnt} payment(s) failed in the last hour`, timestamp: new Date() });
+        }
+
+        // Check for expiring sessions (within 5 min)
+        const [expiring] = await db.query(
+            "SELECT COUNT(*) as cnt FROM access_tokens WHERE status='ACTIVE' AND expires_at BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 5 MINUTE)"
+        );
+        if (expiring[0].cnt > 0) {
+            notifications.push({ type: 'info', message: `${expiring[0].cnt} session(s) expiring within 5 minutes`, timestamp: new Date() });
+        }
+
+        // Check system settings
+        const { parseBool } = require('../utils/systemSettings');
+        const { getSettingsMap } = require('../utils/systemSettings');
+        const settings = await getSettingsMap();
+        if (parseBool(settings.maintenance_mode, false)) {
+            notifications.push({ type: 'warning', message: 'Maintenance mode is ENABLED', timestamp: new Date() });
+        }
+        if (!parseBool(settings.sales_enabled, true)) {
+            notifications.push({ type: 'warning', message: 'Sales are DISABLED', timestamp: new Date() });
+        }
+
+        res.json({ success: true, notifications });
+    } catch (err) {
+        console.error('Notifications error:', err);
+        res.status(500).json({ error: 'Failed to fetch notifications' });
+    }
+});
+
+// ==================== BULK OPERATIONS ====================
+
+router.post('/devices/block', verifyToken, async (req, res) => {
+    try {
+        const { macs, reason } = req.body;
+        if (!macs || !Array.isArray(macs) || macs.length === 0) {
+            return res.status(400).json({ error: 'MAC addresses required' });
+        }
+        for (const mac of macs) {
+            await db.execute(
+                'INSERT IGNORE INTO blocked_macs (mac_address, reason, blocked_by) VALUES (?, ?, ?)',
+                [mac, reason || 'Blocked by admin', req.admin.username]
+            );
+            await db.execute(
+                "UPDATE access_tokens SET status='REVOKED' WHERE mac_address=? AND status='ACTIVE'",
+                [mac]
+            );
+        }
+        await logActivity(req.admin.id, 'BULK_BLOCK', `Blocked ${macs.length} devices: ${macs.join(', ')}`, req.ip);
+        res.json({ success: true, blocked: macs.length });
+    } catch (err) {
+        console.error('Bulk block error:', err);
+        res.status(500).json({ error: 'Failed to block devices' });
+    }
+});
+
+router.post('/devices/unblock', verifyToken, async (req, res) => {
+    try {
+        const { macs } = req.body;
+        if (!macs || !Array.isArray(macs) || macs.length === 0) {
+            return res.status(400).json({ error: 'MAC addresses required' });
+        }
+        for (const mac of macs) {
+            await db.execute('DELETE FROM blocked_macs WHERE mac_address = ?', [mac]);
+        }
+        await logActivity(req.admin.id, 'BULK_UNBLOCK', `Unblocked ${macs.length} devices`, req.ip);
+        res.json({ success: true, unblocked: macs.length });
+    } catch (err) {
+        console.error('Bulk unblock error:', err);
+        res.status(500).json({ error: 'Failed to unblock devices' });
+    }
+});
+
 module.exports = router;

@@ -12,25 +12,25 @@
 :put ""
 
 # ---- 1. Check walled garden for VPS IP ----
-:put "--- 1. WALLED GARDEN (VPS IP 136.117.23.173) ---"
-:local wgRules [/ip hotspot walled-garden ip find dst-address=136.117.23.173]
+:put "--- 1. WALLED GARDEN (VPS IP 136.109.224.75) ---"
+:local wgRules [/ip hotspot walled-garden ip find dst-address=136.109.224.75]
 :if ([:len $wgRules] = 0) do={
-    :put "!! PROBLEM: VPS IP 136.117.23.173 NOT in walled-garden-ip !!"
-    :put "   FIX: /ip hotspot walled-garden ip add action=accept dst-address=136.117.23.173 comment=\"VPS Portal\""
+    :put "!! PROBLEM: VPS IP 136.109.224.75 NOT in walled-garden-ip !!"
+    :put "   FIX: /ip hotspot walled-garden ip add action=accept dst-address=136.109.224.75 comment=\"VPS Portal\""
 } else={
     :put "OK: VPS IP found in walled-garden-ip:"
-    /ip hotspot walled-garden ip print where dst-address=136.117.23.173
+    /ip hotspot walled-garden ip print where dst-address=136.109.224.75
 }
 :put ""
 
 :put "--- 2. WALLED GARDEN (hostname-based) ---"
-:local wgHostRules [/ip hotspot walled-garden find dst-host=136.117.23.173]
+:local wgHostRules [/ip hotspot walled-garden find dst-host=136.109.224.75]
 :if ([:len $wgHostRules] = 0) do={
     :put "!! WARNING: VPS IP not in walled-garden (hostname-based) !!"
-    :put "   FIX: /ip hotspot walled-garden add action=allow dst-host=136.117.23.173"
+    :put "   FIX: /ip hotspot walled-garden add action=allow dst-host=136.109.224.75"
 } else={
     :put "OK: VPS IP found in walled-garden:"
-    /ip hotspot walled-garden print where dst-host=136.117.23.173
+    /ip hotspot walled-garden print where dst-host=136.109.224.75
 }
 :put ""
 
@@ -65,8 +65,8 @@
 
 # ---- 5. Test connectivity to VPS ----
 :put "--- 8. CONNECTIVITY TEST TO VPS ---"
-:put "Pinging 136.117.23.173..."
-:local pingResult [/ping 136.117.23.173 count=3]
+:put "Pinging 136.109.224.75..."
+:local pingResult [/ping 136.109.224.75 count=3]
 :if ($pingResult > 0) do={
     :put ("OK: Ping succeeded (" . $pingResult . "/3 replies)")
 } else={
@@ -91,7 +91,7 @@
 
 :put "========================================"
 :put "  If VPS is reachable but browser fails:"
-:put "  1. Check walled garden has 136.117.23.173"
+:put "  1. Check walled garden has 136.109.224.75"
 :put "  2. Check no hs-unauth rule blocks port 80 to VPS"
 :put "  3. Flush DNS cache: /ip dns cache flush"
 :put "========================================"

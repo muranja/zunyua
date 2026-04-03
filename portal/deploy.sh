@@ -1,5 +1,5 @@
 #!/bin/bash
-# TurboNet Deployment Script for 136.117.23.173
+# TurboNet Deployment Script for 136.109.224.75
 # Run this on your Google Cloud VM
 
 set -e
@@ -8,16 +8,10 @@ echo "🚀 TurboNet Deployment Starting..."
 echo "=================================="
 
 # Variables
-DOMAIN="136.117.23.173"
-DUCKDNS_TOKEN="2266cd6c-a6e7-4539-beff-9ec53cc82b7a"
+DOMAIN="136.109.224.75"
 DB_PASS="TurboNet2024!"
 
-# 1. Update DuckDNS
-echo "🦆 Updating DuckDNS..."
-curl -s "https://www.duckdns.org/update?domains=turbowifi&token=$DUCKDNS_TOKEN&ip=" > /dev/null
-echo "DuckDNS updated!"
-
-# 2. Install Node.js 20
+# 1. Install Node.js 20
 echo "📦 Installing Node.js..."
 if ! command -v node &> /dev/null; then
     curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
@@ -83,29 +77,29 @@ server {
     server_name _;
 
     # Windows NCSI
-    location = /connecttest.txt { return 302 http://136.117.23.173/; }
-    location = /redirect { return 302 http://136.117.23.173/; }
-    location = /ncsi.txt { return 302 http://136.117.23.173/; }
+    location = /connecttest.txt { return 302 http://136.109.224.75/; }
+    location = /redirect { return 302 http://136.109.224.75/; }
+    location = /ncsi.txt { return 302 http://136.109.224.75/; }
 
     # Apple / macOS / iOS
-    location = /hotspot-detect.html { return 302 http://136.117.23.173/; }
-    location = /library/test/success.html { return 302 http://136.117.23.173/; }
-    location = /success.html { return 302 http://136.117.23.173/; }
+    location = /hotspot-detect.html { return 302 http://136.109.224.75/; }
+    location = /library/test/success.html { return 302 http://136.109.224.75/; }
+    location = /success.html { return 302 http://136.109.224.75/; }
 
     # Android / Chrome
-    location = /generate_204 { return 302 http://136.117.23.173/; }
-    location = /gen_204 { return 302 http://136.117.23.173/; }
+    location = /generate_204 { return 302 http://136.109.224.75/; }
+    location = /gen_204 { return 302 http://136.109.224.75/; }
 
     # Linux
-    location = /nm-check.txt { return 302 http://136.117.23.173/; }
-    location = /check_network_status.txt { return 302 http://136.117.23.173/; }
+    location = /nm-check.txt { return 302 http://136.109.224.75/; }
+    location = /check_network_status.txt { return 302 http://136.109.224.75/; }
 
     # Firefox
-    location = /canonical.html { return 302 http://136.117.23.173/; }
-    location = /success.txt { return 302 http://136.117.23.173/; }
+    location = /canonical.html { return 302 http://136.109.224.75/; }
+    location = /success.txt { return 302 http://136.109.224.75/; }
 
     # Everything else
-    location / { return 302 http://136.117.23.173/; }
+    location / { return 302 http://136.109.224.75/; }
 }
 
 # =====================================================================
@@ -113,7 +107,7 @@ server {
 # =====================================================================
 server {
     listen 80;
-    server_name 136.117.23.173;
+    server_name 136.109.224.75;
 
     location /.well-known/acme-challenge/ { root /var/www/html; }
     location /api {
@@ -137,7 +131,7 @@ server {
 # =====================================================================
 server {
     listen 80;
-    server_name 136.117.23.173;
+    server_name 136.109.224.75;
 
     location /api {
         proxy_pass http://127.0.0.1:3000;
@@ -166,13 +160,6 @@ pm2 save
 
 # 11. Setup PM2 startup
 sudo env PATH=$PATH:/usr/bin pm2 startup systemd -u $USER --hp /home/$USER 2>/dev/null || true
-
-# 12. Setup DuckDNS auto-update cron
-echo "🦆 Setting up DuckDNS auto-update..."
-mkdir -p ~/duckdns
-echo "echo url=\"https://www.duckdns.org/update?domains=turbowifi&token=$DUCKDNS_TOKEN&ip=\" | curl -k -o ~/duckdns/duck.log -K -" > ~/duckdns/duck.sh
-chmod 700 ~/duckdns/duck.sh
-(crontab -l 2>/dev/null | grep -v duckdns; echo "*/5 * * * * ~/duckdns/duck.sh >/dev/null 2>&1") | crontab -
 
 echo ""
 echo "✅ TurboNet Deployment Complete!"

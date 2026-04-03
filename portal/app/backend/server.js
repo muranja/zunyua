@@ -523,8 +523,9 @@ app.post('/api/callback', async (req, res) => {
         const expiresAt = new Date(Date.now() + durationSeconds * 1000);
         console.log(`Callback plan resolved: plan=${tx.plan_id} duration=${durationSeconds}s expires=${expiresAt.toISOString()}`);
 
+        // Expire + remove old tokens for this MAC to prevent UNIQUE constraint crashes
         await conn.execute(
-            'UPDATE access_tokens SET status = "EXPIRED" WHERE mac_address = ? AND status = "ACTIVE"',
+            'DELETE FROM access_tokens WHERE mac_address = ? AND status IN ("ACTIVE","EXPIRED")',
             [tx.mac_address]
         );
 
@@ -772,15 +773,7 @@ app.post('/api/recover', async (req, res) => {
         }
 
         const tx = txRows[0];
-        const txPhoneRaw = String(tx.phone_number || '').trim();
-        const normalizedTxPhone = txPhoneRaw ? formatPhoneNumber(txPhoneRaw) : '';
-        let effectivePhone = formattedCallbackPhone;
-        if (normalizedTxPhone) {
-            if (formattedCallbackPhone && normalizedTxPhone !== formattedCallbackPhone) {
-                console.warn(`Callback phone mismatch: tx=${normalizedTxPhone} callback=${formattedCallbackPhone} checkout=${checkoutReqId}`);
-            }
-            effectivePhone = normalizedTxPhone;
-        }
+        const effectivePhone = formatPhoneNumber(String(tx.phone_number || '').trim()) || 'unknown';
         const txVendorId = tx.vendor_id || await getDefaultVendorId();
         const macPolicy = await getMacPolicy(normalizedMac, txVendorId);
         if (macPolicy.blocked && !macPolicy.whitelisted) {
@@ -812,10 +805,10 @@ app.post('/api/recover', async (req, res) => {
         const plan = planRows[0];
         const durationSeconds = plan ? plan.duration_minutes * 60 : 3600;
 
-        // Expire any existing active tokens for this MAC
+        // Delete old tokens for this MAC to prevent UNIQUE constraint crashes
         await db.execute(
-            'UPDATE access_tokens SET status = "EXPIRED" WHERE vendor_id = ? AND mac_address = ? AND status = "ACTIVE"',
-            [txVendorId, normalizedMac]
+            'DELETE FROM access_tokens WHERE mac_address = ? AND status IN ("ACTIVE","EXPIRED")',
+            [normalizedMac]
         );
 
         const accessToken = generateAccessToken();

@@ -58,16 +58,16 @@ checker never gets redirected to the portal.
 
 **What it does:**
 Adds `/ip dns static` entries that point all OS probe domains to your VPS IP
-(136.117.23.173). When a PC/TV tries to reach its probe URL:
+(136.109.224.75). When a PC/TV tries to reach its probe URL:
 
 ```
 DNS query for www.msftconnecttest.com
          ↓
-MikroTik DNS returns: 136.117.23.173   ← static override
+MikroTik DNS returns: 136.109.224.75   ← static override
          ↓
-PC makes HTTP GET to 136.117.23.173/connecttest.txt
+PC makes HTTP GET to 136.109.224.75/connecttest.txt
          ↓
-Nginx (catch-all block) returns: 302 → http://136.117.23.173/
+Nginx (catch-all block) returns: 302 → http://136.109.224.75/
          ↓
 PC/TV detects redirect → shows "Sign in to network" popup
          ↓
@@ -95,7 +95,7 @@ to trigger the captive portal popup on each OS.
 
 **How to deploy:**
 ```bash
-# On your VPS (136.117.23.173):
+# On your VPS (136.109.224.75):
 
 # 1. Copy the file
 sudo cp nginx_captive_portal.conf /etc/nginx/sites-available/turbonet
@@ -127,7 +127,7 @@ can't reach the real internet yet. If you redirect to HTTPS, you'll get SSL erro
 1. Connect to TurboNet WiFi
 2. Should see "Sign in to TurboNet_Free_WiFi" notification in taskbar
 3. Click it → portal opens
-4. If no notification, open browser and go to: `http://136.117.23.173`
+4. If no notification, open browser and go to: `http://136.109.224.75`
 
 ### Test from MikroTik terminal:
 ```routeros
@@ -135,16 +135,16 @@ can't reach the real internet yet. If you redirect to HTTPS, you'll get SSL erro
 /ip dns static print where comment~"probe"
 
 # Should show entries for www.msftconnecttest.com, captive.apple.com, etc.
-# All pointing to 136.117.23.173
+# All pointing to 136.109.224.75
 ```
 
 ### Test the nginx catch-all from VPS:
 ```bash
-curl -v http://136.117.23.173/connecttest.txt
+curl -v http://136.109.224.75/connecttest.txt
 # Should return: HTTP/1.1 302 Found
-# Location: http://136.117.23.173/
+# Location: http://136.109.224.75/
 
-curl -v http://136.117.23.173/hotspot-detect.html
+curl -v http://136.109.224.75/hotspot-detect.html
 # Should return: HTTP/1.1 302 Found
 ```
 
@@ -233,10 +233,10 @@ uncommented, inside your existing router.
 
 | Problem | Root Cause | Fix |
 |---------|-----------|-----|
-| Windows PC shows DNS error | www.msftconnecttest.com DNS times out | Static DNS → 136.117.23.173 |
-| macOS portal never shown | captive.apple.com DNS fails | Static DNS → 136.117.23.173 |
-| Smart TV no portal | Samsung/LG probe DNS fails | Static DNS → 136.117.23.173 |
-| Probe redirect not served | nginx only responds to 136.117.23.173 | Add catch-all default_server block |
+| Windows PC shows DNS error | www.msftconnecttest.com DNS times out | Static DNS → 136.109.224.75 |
+| macOS portal never shown | captive.apple.com DNS fails | Static DNS → 136.109.224.75 |
+| Smart TV no portal | Samsung/LG probe DNS fails | Static DNS → 136.109.224.75 |
+| Probe redirect not served | nginx only responds to 136.109.224.75 | Add catch-all default_server block |
 | KES 1,000 multi-device plan | No feature exists yet | mpesa_monthly_bundles + bundle_devices tables |
 | 3-device binding | No feature exists yet | /api/bundle/redeem endpoint |
 | Auto-login all bound MACs | check-status only checks access_tokens | Add bundle_devices lookup to check-status |

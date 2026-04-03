@@ -8,8 +8,8 @@
 # This is required on RouterOS 7.14+ (home mode blocks hotspot by default).
 
 # ============ VARIABLES (EDIT THESE!) ============
-:local portalURL "http://136.117.23.173"
-:local radiusIP "136.117.23.173"
+:local portalURL "http://136.109.224.75"
+:local radiusIP "136.109.224.75"
 :local radiusSecret "TurboNetSecret2024"
 :local lanBridge "bridge"
 :local lanIP "192.168.88.1/24"
@@ -80,9 +80,6 @@
 :if ([:len [/ip hotspot walled-garden ip find dst-address=$radiusIP]] = 0) do={
     /ip hotspot walled-garden ip add action=accept dst-address=$radiusIP comment="Portal/RADIUS App"
 }
-:if ([:len [/ip hotspot walled-garden find dst-host=$radiusIP]] = 0) do={
-    /ip hotspot walled-garden add action=allow dst-host=$radiusIP comment="VPS API/Portal HTTP Proxy Bypass"
-}
 :if ([:len [/ip hotspot walled-garden ip find dst-host="login.turbowifi.net"]] = 0) do={
     /ip hotspot walled-garden ip add action=accept dst-host="login.turbowifi.net" comment="Portal Hostname"
 }
@@ -144,31 +141,6 @@
 # Without this, Chrome/Firefox go straight to HTTPS and the portal never appears.
 :if ([:len [/ip firewall filter find comment="Block HTTPS all (unauth) - forces captive portal"]] = 0) do={
     /ip firewall filter add action=reject chain=hs-unauth comment="Block HTTPS all (unauth) - forces captive portal" dst-port=443 protocol=tcp reject-with=tcp-reset
-}
-
-# Block QUIC (UDP 443) for unauthenticated users
-# Google/YouTube use HTTP/3 (QUIC) over UDP 443. Without this, browsers can
-# bypass the captive portal entirely by connecting via QUIC.
-:if ([:len [/ip firewall filter find comment="Block QUIC UDP 443 (unauth)"]] = 0) do={
-    /ip firewall filter add action=reject chain=hs-unauth comment="Block QUIC UDP 443 (unauth)" dst-port=443 protocol=udp reject-with=icmp-admin-prohibited
-}
-
-# Block Google/YouTube IPs directly for unauthenticated users
-# Chrome has pre-cached DNS and HSTS — it can connect to these IPs without DNS.
-:if ([:len [/ip firewall filter find comment="Block Google direct (unauth)"]] = 0) do={
-    /ip firewall filter add action=reject chain=hs-unauth comment="Block Google direct (unauth)" dst-address=142.250.0.0/15 protocol=tcp reject-with=tcp-reset
-}
-:if ([:len [/ip firewall filter find comment="Block YouTube direct (unauth)"]] = 0) do={
-    /ip firewall filter add action=reject chain=hs-unauth comment="Block YouTube direct (unauth)" dst-address=208.65.152.0/22 protocol=tcp reject-with=tcp-reset
-}
-:if ([:len [/ip firewall filter find comment="Block YouTube alt (unauth)"]] = 0) do={
-    /ip firewall filter add action=reject chain=hs-unauth comment="Block YouTube alt (unauth)" dst-address=208.117.224.0/19 protocol=tcp reject-with=tcp-reset
-}
-
-# Explicit REJECT at end of hs-unauth chain — catches anything the hotspot rules miss
-# Without this, unmatched packets fall through to forward chain and get masqueraded.
-:if ([:len [/ip firewall filter find comment="Catch-all reject hs-unauth"]] = 0) do={
-    /ip firewall filter add action=reject chain=hs-unauth comment="Catch-all reject hs-unauth" reject-with=icmp-admin-prohibited
 }
 
 # Force standard DNS traffic to the router for unauthenticated users only

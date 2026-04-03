@@ -1,7 +1,7 @@
 # =====================================================================
 # TurboNet — Fix Captive Portal Connectivity
 # =====================================================================
-# The diagnostic showed VPS IP 136.117.23.173 is NOT in the walled garden.
+# The diagnostic showed VPS IP 136.109.224.75 is NOT in the walled garden.
 # This means the hotspot intercepts all traffic to the VPS, blocking
 # unauthenticated users from reaching the portal or API.
 #
@@ -13,31 +13,31 @@
 :put ""
 
 # ---- 1. Add VPS IP to walled-garden-ip (primary fix) ----
-:if ([:len [/ip hotspot walled-garden ip find dst-address=136.117.23.173]] = 0) do={
-    /ip hotspot walled-garden ip add action=accept dst-address=136.117.23.173 comment="VPS Portal - all traffic"
+:if ([:len [/ip hotspot walled-garden ip find dst-address=136.109.224.75]] = 0) do={
+    /ip hotspot walled-garden ip add action=accept dst-address=136.109.224.75 comment="VPS Portal - all traffic"
     :put "OK: Added VPS IP to walled-garden-ip"
 } else={
     :put "SKIP: VPS IP already in walled-garden-ip"
 }
 
 # ---- 2. Add VPS IP to walled-garden (hostname-based) ----
-:if ([:len [/ip hotspot walled-garden find dst-host=136.117.23.173]] = 0) do={
-    /ip hotspot walled-garden add action=allow dst-host=136.117.23.173 comment="VPS Portal HTTP bypass"
+:if ([:len [/ip hotspot walled-garden find dst-host=136.109.224.75]] = 0) do={
+    /ip hotspot walled-garden add action=allow dst-host=136.109.224.75 comment="VPS Portal HTTP bypass"
     :put "OK: Added VPS IP to walled-garden (hostname)"
 } else={
     :put "SKIP: VPS IP already in walled-garden (hostname)"
 }
 
 # ---- 3. Add protocol-specific rules for belt-and-suspenders ----
-:if ([:len [/ip hotspot walled-garden ip find dst-address=136.117.23.173 protocol=tcp dst-port=80]] = 0) do={
-    /ip hotspot walled-garden ip add action=accept dst-address=136.117.23.173 protocol=tcp dst-port=80 comment="VPS HTTP"
+:if ([:len [/ip hotspot walled-garden ip find dst-address=136.109.224.75 protocol=tcp dst-port=80]] = 0) do={
+    /ip hotspot walled-garden ip add action=accept dst-address=136.109.224.75 protocol=tcp dst-port=80 comment="VPS HTTP"
     :put "OK: Added VPS HTTP (port 80) to walled-garden"
 } else={
     :put "SKIP: VPS HTTP already in walled-garden"
 }
 
-:if ([:len [/ip hotspot walled-garden ip find dst-address=136.117.23.173 protocol=tcp dst-port=443]] = 0) do={
-    /ip hotspot walled-garden ip add action=accept dst-address=136.117.23.173 protocol=tcp dst-port=443 comment="VPS HTTPS"
+:if ([:len [/ip hotspot walled-garden ip find dst-address=136.109.224.75 protocol=tcp dst-port=443]] = 0) do={
+    /ip hotspot walled-garden ip add action=accept dst-address=136.109.224.75 protocol=tcp dst-port=443 comment="VPS HTTPS"
     :put "OK: Added VPS HTTPS (port 443) to walled-garden"
 } else={
     :put "SKIP: VPS HTTPS already in walled-garden"
@@ -52,12 +52,12 @@
 :put "=== Verification ==="
 :put ""
 :put "Walled garden entries for VPS:"
-/ip hotspot walled-garden ip print where dst-address=136.117.23.173
-/ip hotspot walled-garden print where dst-host=136.117.23.173
+/ip hotspot walled-garden ip print where dst-address=136.109.224.75
+/ip hotspot walled-garden print where dst-host=136.109.224.75
 :put ""
 
 :put "Testing ping to VPS..."
-:local pingResult [/ping 136.117.23.173 count=3]
+:local pingResult [/ping 136.109.224.75 count=3]
 :if ($pingResult > 0) do={
     :put ("OK: Ping succeeded (" . $pingResult . "/3 replies)")
 } else={

@@ -20,7 +20,7 @@ module.exports = {
                 MPESA_SHORTCODE: '174379',
                 MPESA_OAUTH_URL: 'https://sandbox.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials',
                 MPESA_STK_URL: 'https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest',
-                MPESA_CALLBACK_URL: 'http://136.117.23.173/api/callback',
+                MPESA_CALLBACK_URL: 'http://136.109.224.75/api/callback',
                 JWT_SECRET: 'supersecretjwtkey',
                 MIKROTIK_IP: '192.168.88.1',
                 RADIUS_SECRET: 'TurboNetSecret2024'

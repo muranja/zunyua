@@ -34,7 +34,7 @@ body {
 
 /* Glass & Premium Component Styles */
 .glass-panel {
-  @apply bg-[#1e293b]/40 backdrop-blur-xl border border-white/10 shadow-xl;
+  @apply bg-[#1e293b]/40 backdrop-blur-md border border-white/10 shadow-xl;
 }
 
 .ticket-card {

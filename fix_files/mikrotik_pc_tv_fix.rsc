@@ -16,68 +16,68 @@
 # Each OS has a specific "connectivity check" URL it probes on Wi-Fi join.
 # By default these resolve to the real internet, which MikroTik blocks
 # for unauthenticated users — causing DNS timeouts / "no internet" errors.
-# We redirect them to your VPS (136.117.23.173) so nginx can intercept them.
+# We redirect them to your VPS (136.109.224.75) so nginx can intercept them.
 
 /ip dns static
 
 # Windows — NCSI (Network Connectivity Status Indicator)
 :if ([:len [/ip dns static find name="www.msftconnecttest.com"]] = 0) do={
-    /ip dns static add name="www.msftconnecttest.com" address=136.117.23.173 comment="Windows NCSI probe"
+    /ip dns static add name="www.msftconnecttest.com" address=136.109.224.75 comment="Windows NCSI probe"
 }
 :if ([:len [/ip dns static find name="ipv6.msftconnecttest.com"]] = 0) do={
-    /ip dns static add name="ipv6.msftconnecttest.com" address=136.117.23.173 comment="Windows NCSI IPv6"
+    /ip dns static add name="ipv6.msftconnecttest.com" address=136.109.224.75 comment="Windows NCSI IPv6"
 }
 :if ([:len [/ip dns static find name="www.msftncsi.com"]] = 0) do={
-    /ip dns static add name="www.msftncsi.com" address=136.117.23.173 comment="Windows NCSI legacy"
+    /ip dns static add name="www.msftncsi.com" address=136.109.224.75 comment="Windows NCSI legacy"
 }
 
 # macOS / iOS / Apple TV
 :if ([:len [/ip dns static find name="captive.apple.com"]] = 0) do={
-    /ip dns static add name="captive.apple.com" address=136.117.23.173 comment="Apple captive portal probe"
+    /ip dns static add name="captive.apple.com" address=136.109.224.75 comment="Apple captive portal probe"
 }
 :if ([:len [/ip dns static find name="www.apple.com"]] = 0) do={
-    /ip dns static add name="www.apple.com" address=136.117.23.173 comment="Apple probe fallback"
+    /ip dns static add name="www.apple.com" address=136.109.224.75 comment="Apple probe fallback"
 }
 :if ([:len [/ip dns static find name="gsp1.apple.com"]] = 0) do={
-    /ip dns static add name="gsp1.apple.com" address=136.117.23.173 comment="Apple TV probe"
+    /ip dns static add name="gsp1.apple.com" address=136.109.224.75 comment="Apple TV probe"
 }
 :if ([:len [/ip dns static find name="apple.com"]] = 0) do={
-    /ip dns static add name="apple.com" address=136.117.23.173 comment="Apple probe base domain"
+    /ip dns static add name="apple.com" address=136.109.224.75 comment="Apple probe base domain"
 }
 
 # Android / Chrome (Google) — also used by Android TV / Google TV
 :if ([:len [/ip dns static find name="connectivitycheck.gstatic.com"]] = 0) do={
-    /ip dns static add name="connectivitycheck.gstatic.com" address=136.117.23.173 comment="Android/Chrome probe"
+    /ip dns static add name="connectivitycheck.gstatic.com" address=136.109.224.75 comment="Android/Chrome probe"
 }
 :if ([:len [/ip dns static find name="connectivitycheck.android.com"]] = 0) do={
-    /ip dns static add name="connectivitycheck.android.com" address=136.117.23.173 comment="Android probe alt"
+    /ip dns static add name="connectivitycheck.android.com" address=136.109.224.75 comment="Android probe alt"
 }
 :if ([:len [/ip dns static find name="clients3.google.com"]] = 0) do={
-    /ip dns static add name="clients3.google.com" address=136.117.23.173 comment="Android probe alt 2"
+    /ip dns static add name="clients3.google.com" address=136.109.224.75 comment="Android probe alt 2"
 }
 
 # Samsung Smart TV — uses this domain for connectivity checks
 :if ([:len [/ip dns static find name="www.samsung.com"]] = 0) do={
-    /ip dns static add name="www.samsung.com" address=136.117.23.173 comment="Samsung TV probe"
+    /ip dns static add name="www.samsung.com" address=136.109.224.75 comment="Samsung TV probe"
 }
 :if ([:len [/ip dns static find name="samsungcld.com"]] = 0) do={
-    /ip dns static add name="samsungcld.com" address=136.117.23.173 comment="Samsung TV probe 2"
+    /ip dns static add name="samsungcld.com" address=136.109.224.75 comment="Samsung TV probe 2"
 }
 
 # LG Smart TV
 :if ([:len [/ip dns static find name="www.lgtvsdp.com"]] = 0) do={
-    /ip dns static add name="www.lgtvsdp.com" address=136.117.23.173 comment="LG TV probe"
+    /ip dns static add name="www.lgtvsdp.com" address=136.109.224.75 comment="LG TV probe"
 }
 :if ([:len [/ip dns static find name="lgappstv.com"]] = 0) do={
-    /ip dns static add name="lgappstv.com" address=136.117.23.173 comment="LG TV probe 2"
+    /ip dns static add name="lgappstv.com" address=136.109.224.75 comment="LG TV probe 2"
 }
 
 # Linux (Ubuntu/Debian NetworkManager)
 :if ([:len [/ip dns static find name="network-test.debian.org"]] = 0) do={
-    /ip dns static add name="network-test.debian.org" address=136.117.23.173 comment="Linux NM probe"
+    /ip dns static add name="network-test.debian.org" address=136.109.224.75 comment="Linux NM probe"
 }
 :if ([:len [/ip dns static find name="nmcheck.gnome.org"]] = 0) do={
-    /ip dns static add name="nmcheck.gnome.org" address=136.117.23.173 comment="Linux GNOME probe"
+    /ip dns static add name="nmcheck.gnome.org" address=136.109.224.75 comment="Linux GNOME probe"
 }
 
 
@@ -86,12 +86,12 @@
 # are explicitly allowed so the probe responses get through.
 
 /ip hotspot walled-garden ip
-:if ([:len [/ip hotspot walled-garden ip find dst-address=136.117.23.173]] = 0) do={
-    /ip hotspot walled-garden ip add action=accept dst-address=136.117.23.173 comment="VPS Portal (all probe responses)"
+:if ([:len [/ip hotspot walled-garden ip find dst-address=136.109.224.75]] = 0) do={
+    /ip hotspot walled-garden ip add action=accept dst-address=136.109.224.75 comment="VPS Portal (all probe responses)"
 }
 # Allow TCP port 80 responses FROM the VPS to reach clients (belt-and-suspenders)
-:if ([:len [/ip hotspot walled-garden ip find dst-address=136.117.23.173 protocol=tcp]] = 0) do={
-    /ip hotspot walled-garden ip add action=accept dst-address=136.117.23.173 protocol=tcp comment="VPS Portal TCP"
+:if ([:len [/ip hotspot walled-garden ip find dst-address=136.109.224.75 protocol=tcp]] = 0) do={
+    /ip hotspot walled-garden ip add action=accept dst-address=136.109.224.75 protocol=tcp comment="VPS Portal TCP"
 }
 
 

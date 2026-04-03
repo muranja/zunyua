@@ -1,148 +1,53 @@
 <!DOCTYPE html>
 <html>
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Connecting to TurboNet...</title>
+    <title>TurboNet</title>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: 'Segoe UI', sans-serif;
-            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            padding: 20px;
-        }
-
-        .container {
-            text-align: center;
-            width: 100%;
-            max-width: 400px;
-        }
-
-        .spinner {
-            width: 50px;
-            height: 50px;
-            border: 4px solid rgba(255, 255, 255, 0.1);
-            border-top-color: #22c55e;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-            margin: 0 auto 20px;
-        }
-
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-
-        h1 {
-            font-size: 1.5rem;
-            margin-bottom: 8px;
-        }
-
-        .subtitle {
-            color: #94a3b8;
-            font-size: 0.9rem;
-            margin-bottom: 20px;
-        }
-
-        .log-box {
-            background: rgba(0, 0, 0, 0.4);
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            border-radius: 12px;
-            padding: 14px;
-            text-align: left;
-            font-family: 'Courier New', monospace;
-            font-size: 12px;
-            line-height: 1.7;
-            max-height: 220px;
-            overflow-y: auto;
-        }
-
-        .log-box .ok { color: #4ade80; }
-        .log-box .info { color: #94a3b8; }
-        .log-box .err { color: #f87171; }
-        .log-box .warn { color: #fbbf24; }
-        .log-box .step { color: #60a5fa; }
+        *{margin:0;padding:0;box-sizing:border-box}
+        body{font-family:'Segoe UI',system-ui,sans-serif;background:#0f172a;color:#f8fafc;display:flex;align-items:center;justify-content:center;height:100vh;padding:16px}
+        .c{text-align:center;width:100%;max-width:360px}
+        .s{width:40px;height:40px;border:3px solid rgba(255,255,255,.1);border-top-color:#22c55e;border-radius:50%;animation:r 1s linear infinite;margin:0 auto 16px}
+        @keyframes r{to{transform:rotate(360deg)}}
+        h1{font-size:1.3rem;margin-bottom:6px}
+        .t{color:#94a3b8;font-size:.85rem;margin-bottom:16px}
+        .l{background:rgba(0,0,0,.4);border:1px solid rgba(255,255,255,.06);border-radius:10px;padding:10px;text-align:left;font:11px/1.6 monospace;max-height:180px;overflow-y:auto}
+        .ok{color:#4ade80}.e{color:#f87171}.w{color:#fbbf24}.i{color:#94a3b8}.st{color:#60a5fa}
     </style>
 </head>
-
 <body>
-    <div class="container">
-        <div class="spinner" id="spinner"></div>
+    <div class="c">
+        <div class="s" id="sp"></div>
         <h1>TurboNet</h1>
-        <p class="subtitle" id="subtitle">Connecting...</p>
-        <div class="log-box" id="logbox"></div>
+        <p class="t" id="st">Connecting...</p>
+        <div class="l" id="lg"></div>
     </div>
-
     <script>
-        var logbox = document.getElementById('logbox');
-        var subtitle = document.getElementById('subtitle');
-        var spinner = document.getElementById('spinner');
+        var lg=document.getElementById('lg'),st=document.getElementById('st'),sp=document.getElementById('sp');
+        function log(m,c){var d=document.createElement('div');d.className=c||'i';d.textContent=m;lg.appendChild(d);lg.scrollTop=lg.scrollHeight}
+        function done(ok,m){sp.style.display='none';st.textContent=m;st.style.color=ok?'#4ade80':'#f87171'}
 
-        function log(msg, cls) {
-            cls = cls || 'info';
-            var line = document.createElement('div');
-            line.className = cls;
-            line.textContent = msg;
-            logbox.appendChild(line);
-            logbox.scrollTop = logbox.scrollHeight;
-        }
+        // MikroTik template variables (replaced by router at serve-time)
+        var macRaw="$(mac-esc)",linkRaw="$(link-orig-esc)",loginUrl="$(link-login-only)";
+        var mac=macRaw,link=linkRaw;
+        try{mac=decodeURIComponent(macRaw)}catch(x){}
+        try{link=decodeURIComponent(linkRaw)}catch(x){}
 
-        function done(ok, msg) {
-            spinner.style.display = 'none';
-            subtitle.textContent = msg;
-            subtitle.style.color = ok ? '#4ade80' : '#f87171';
-        }
+        var portal="http://136.109.224.75";
 
-        // ---- MikroTik variables (replaced by router) ----
-        var macRaw = "$(mac-esc)";
-        var mac = macRaw;
-        try { mac = decodeURIComponent(macRaw); } catch(e) {}
+        log('MAC: '+(mac||'?'),mac&&mac.indexOf(':')!==-1?'ok':'e');
 
-        var linkRaw = "$(link-orig-esc)";
-        var link = linkRaw;
-        try { link = decodeURIComponent(linkRaw); } catch(e) {}
-
-        var loginUrl = "$(link-login-only)";
-        var portalURL = "http://136.117.23.173";
-
-        log('Device MAC: ' + (mac || 'NOT DETECTED'), mac ? 'ok' : 'err');
-        log('Router login: ' + (loginUrl || 'none'), 'info');
-
-        if (!mac || mac === '$(mac-esc)' || mac.indexOf(':') === -1) {
-            log('MAC address missing or invalid', 'err');
-            log('Make sure you are connected via WiFi', 'warn');
-            done(false, 'Could not detect your device');
-        } else {
-            log('Building redirect URL...', 'step');
-
-            var redirectURL = portalURL + "?mac=" + encodeURIComponent(mac);
-            if (link && link !== "") {
-                redirectURL += "&redirect=" + encodeURIComponent(link);
-                log('Original link saved', 'info');
-            }
-            if (loginUrl && loginUrl !== "") {
-                redirectURL += "&login_url=" + encodeURIComponent(loginUrl);
-            }
-
-            log('Target: ' + portalURL, 'info');
-            log('Redirecting to portal...', 'step');
-
-            setTimeout(function () {
-                log('Opening portal...', 'ok');
-                window.location.href = redirectURL;
-            }, 800);
+        if(!mac||mac==='$(mac-esc)'||mac.indexOf(':')===-1){
+            log('MAC missing — connect via WiFi','e');
+            done(false,'Device not detected');
+        }else{
+            var url=portal+'?mac='+encodeURIComponent(mac);
+            if(link&&link!=='$(link-orig-esc)')url+='&redirect='+encodeURIComponent(link);
+            if(loginUrl&&loginUrl!=='$(link-login-only)')url+='&login_url='+encodeURIComponent(loginUrl);
+            log('Redirecting...','st');
+            window.location.replace(url);
         }
     </script>
 </body>
-
 </html>

@@ -6,7 +6,7 @@ The following hotspot files have been updated to use port 80 (Nginx proxy) inste
 - login.html - Main captive portal login page
 
 ### Changes Made
-- API URL changed from http://136.117.23.173:3000/api to /api
+- API URL changed from http://136.109.224.75:3000/api to /api
 - This ensures compatibility with phone captive portal browsers that block non-standard ports
 
 ## Upload Methods
@@ -63,7 +63,7 @@ After uploading, verify the changes:
 
 ### Issue: "Connection refused" errors
 - Solution: Ensure Nginx is running on VPS
-- Test: curl http://136.117.23.173/api/health
+- Test: curl http://136.109.224.75/api/health
 
 ### Issue: Recovery form not appearing
 - Solution: Check browser console for JavaScript errors

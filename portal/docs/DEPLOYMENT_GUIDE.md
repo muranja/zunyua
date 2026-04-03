@@ -16,21 +16,14 @@ ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519_gcp -N "" -C "aspenhorgan254"
 # Compute Engine → VM instances → Edit → SSH Keys → Add
 ```
 
-### Step 2: DuckDNS Configuration
-Created `~/duckdns/duck.sh`:
-```bash
-echo url="https://www.duckdns.org/update?domains=turbowifi&token=YOUR_TOKEN&ip=" | curl -k -o ~/duckdns/duck.log -K -
-```
-Added cron job: `*/5 * * * * ~/duckdns/duck.sh`
-
-### Step 3: Nginx + SSL Setup
+### Step 2: Nginx + SSL Setup
 ```bash
 # Install nginx site config
 sudo cp turbowifi.conf /etc/nginx/sites-available/turbowifi
 sudo ln -s /etc/nginx/sites-available/turbowifi /etc/nginx/sites-enabled/
 
 # Get SSL certificate
-sudo certbot --nginx -d 136.117.23.173 --non-interactive --agree-tos --email your@email.com
+sudo certbot --nginx -d 136.109.224.75 --non-interactive --agree-tos --email your@email.com
 ```
 
 ### Step 4: PM2 Process Manager
@@ -107,11 +100,11 @@ npm run build
 
 ### Step 3: Deploy to Server
 ```bash
-scp -i ~/.ssh/id_ed25519_gcp -r dist/* aspenhorgan254@136.117.23.173:~/turbonet/app/frontend/dist/
+scp -i ~/.ssh/id_ed25519_gcp -r dist/* aspenhorgan254@136.109.224.75:~/turbonet/app/frontend/dist/
 ```
 
 ### Step 4: Verify Fix
-Login at https://136.117.23.173/admin with:
+Login at http://136.109.224.75/admin with:
 - **Username:** `MIKDash`
 - **Password:** `Jz@7Hbh--@9324`
 
@@ -127,21 +120,18 @@ Login at https://136.117.23.173/admin with:
 | Local Dev | Admin Dashboard | `admin` | `admin123` |
 
 ### Important URLs
-- **Customer Portal:** https://136.117.23.173/
-- **Admin Panel:** https://136.117.23.173/admin
+- **Customer Portal:** http://136.109.224.75/
+- **Admin Panel:** http://136.109.224.75/admin
 
 ### Server Commands
 ```bash
 # SSH to server
-ssh -i ~/.ssh/id_ed25519_gcp aspenhorgan254@136.117.23.173
+ssh -i ~/.ssh/id_ed25519_gcp aspenhorgan254@136.109.224.75
 
 # Backend management
 pm2 status
 pm2 logs turbonet-api
 pm2 restart turbonet-api
-
-# Update DuckDNS manually
-~/duckdns/duck.sh && cat ~/duckdns/duck.log
 ```
 
 ---

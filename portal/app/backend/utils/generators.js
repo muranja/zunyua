@@ -46,18 +46,14 @@ const isValidMac = (mac) => {
 
 // Normalize MAC address to uppercase with colons
 const normalizeMac = (mac) => {
-    if (!mac || typeof mac !== 'string') return null;
-    let decoded = mac.trim();
-    if (!decoded) return null;
+    if (!mac) return null;
+    let decoded = mac;
     try {
         decoded = decodeURIComponent(decoded);
         if (decoded.includes('%')) decoded = decodeURIComponent(decoded);
         if (decoded.includes('%')) decoded = decodeURIComponent(decoded);
     } catch (e) { }
-    const normalized = decoded.toUpperCase().replace(/-/g, ':');
-    // Validate the result is actually a valid MAC address
-    if (!isValidMac(normalized)) return null;
-    return normalized;
+    return decoded.toUpperCase().replace(/-/g, ':');
 };
 
 module.exports = {
